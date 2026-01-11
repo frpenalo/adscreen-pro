@@ -1,0 +1,8 @@
+/* Auth Page Styles */
+.auth-form {
+  width: 100%;
+}
+
+.auth-form .form-group:last-child {
+  margin-bottom: 0;
+}

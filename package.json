@@ -1,0 +1,40 @@
+{
+  "name": "adscreen-pro",
+  "version": "1.0.0",
+  "description": "Digital advertising marketplace for barbershops and local businesses",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "concurrently \"nodemon server.js\" \"cd frontend && npm start\"",
+    "build": "cd frontend && npm run build",
+    "install-all": "npm install && cd frontend && npm install",
+    "db:setup": "node database/setup.js"
+  },
+  "keywords": ["advertising", "marketplace", "digital-screens"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "multer": "^1.4.5-lts.1",
+    "axios": "^1.6.2",
+    "stripe": "^14.8.0",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.7",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "compression": "^1.7.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,4 @@
+import React from 'react';
+export default function Payouts() {
+  return <div><h1>Venue Payouts</h1><p>Loading...</p></div>;
+}
