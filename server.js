@@ -30,7 +30,7 @@ app.use('/uploads', express.static('uploads'));
 const authRoutes = require('./backend/routes/auth');
 const adminRoutes = require('./backend/routes/admin');
 const venueRoutes = require('./backend/routes/venue');
-const advertiserRoutes = require('./backend/routes/advertiser');
+const advertiserRoutes = require('./backend/routes/advertiserRoutes');
 const paymentRoutes = require('./backend/routes/payment');
 console.log('🔍 advertiserRoutes:', typeof advertiserRoutes);
 console.log('🔍 advertiserRoutes._router:', advertiserRoutes._router);
