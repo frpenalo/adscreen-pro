@@ -1,7 +1,26 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
 const db = require('../config/database');
 const { authMiddleware } = require('../middleware/auth');
+
+// Configure multer
+const upload = multer({
+    dest: 'uploads/ads/',
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: function (req, file, cb) {
+        const allowedTypes = /jpeg|jpg|png|gif|mp4|mov|avi/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+        
+        if (mimetype && extname) {
+            return cb(null, true);
+        } else {
+            cb(new Error('Images and videos only'));
+        }
+    }
+});
 
 // Get advertiser dashboard
 router.get('/dashboard', authMiddleware, async (req, res) => {
@@ -85,6 +104,55 @@ router.get('/locations', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error('Locations error:', error);
         res.status(500).json({ error: 'Failed to load locations' });
+    }
+});
+
+// Upload ad
+router.post('/ads', authMiddleware, upload.single('file'), async (req, res) => {
+    try {
+        if (req.user.role !== 'advertiser') {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const { title, description } = req.body;
+
+        if (!title) {
+            return res.status(400).json({ error: 'Title is required' });
+        }
+
+        const advertiserResult = await db.query(
+            'SELECT id FROM advertisers WHERE user_id = $1',
+            [req.user.id]
+        );
+
+        if (advertiserResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Advertiser profile not found' });
+        }
+
+        const advertiserId = advertiserResult.rows[0].id;
+        const adType = req.file.mimetype.startsWith('image/') ? 'image' : 'video';
+
+        const result = await db.query(
+            `INSERT INTO ads (advertiser_id, ad_type, file_path, title, description, status)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING *`,
+            [advertiserId, adType, req.file.path, title, description || '', 'pending']
+        );
+
+        console.log('✅ Ad uploaded:', result.rows[0]);
+
+        res.status(201).json({
+            message: 'Ad submitted for approval',
+            ad: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('❌ Upload error:', error);
+        res.status(500).json({ error: 'Failed to upload ad' });
     }
 });
 
