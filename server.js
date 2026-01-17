@@ -32,8 +32,8 @@ const adminRoutes = require('./backend/routes/admin');
 const venueRoutes = require('./backend/routes/venue');
 const advertiserRoutesNew = require('./backend/routes/advertiserRoutes');
 const paymentRoutes = require('./backend/routes/payment');
-console.log('🔍 advertiserRoutes:', typeof advertiserRoutes);
-console.log('🔍 advertiserRoutes._router:', advertiserRoutes._router);
+console.log('🔍 advertiserRoutes:', typeof advertiserRoutesNew);
+console.log('🔍 advertiserRoutes._router:', advertiserRoutesNew._router);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
