@@ -26,7 +26,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'));
 
-// Routes
+// Routes - updated
 const authRoutes = require('./backend/routes/auth');
 const adminRoutes = require('./backend/routes/admin');
 const venueRoutes = require('./backend/routes/venue');
