@@ -30,7 +30,7 @@ app.use('/uploads', express.static('uploads'));
 const authRoutes = require('./backend/routes/auth');
 const adminRoutes = require('./backend/routes/admin');
 const venueRoutes = require('./backend/routes/venue');
-const advertiserRoutes = require('./backend/routes/advertiserRoutes');
+const advertiserRoutesNew = require('./backend/routes/advertiserRoutes');
 const paymentRoutes = require('./backend/routes/payment');
 console.log('🔍 advertiserRoutes:', typeof advertiserRoutes);
 console.log('🔍 advertiserRoutes._router:', advertiserRoutes._router);
@@ -38,7 +38,7 @@ console.log('🔍 advertiserRoutes._router:', advertiserRoutes._router);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/venue', venueRoutes);
-app.use('/api/advertiser', advertiserRoutes);
+app.use('/api/advertiser', advertiserRoutesNew);
 app.use('/api/payment', paymentRoutes);
 
 // Health check
