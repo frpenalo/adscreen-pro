@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const db = require('../config/database');
-const auth = require('../middleware/auth');
+const { authMiddleware } = require('../middleware/auth');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -33,7 +33,7 @@ const upload = multer({
 });
 
 // Get advertiser dashboard
-router.get('/dashboard', auth, async (req, res) => {
+router.get('/dashboard', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 'advertiser') {
             return res.status(403).json({ error: 'Access denied' });
@@ -75,7 +75,7 @@ router.get('/dashboard', auth, async (req, res) => {
 });
 
 // Get campaigns
-router.get('/campaigns', auth, async (req, res) => {
+router.get('/campaigns', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 'advertiser') {
             return res.status(403).json({ error: 'Access denied' });
@@ -104,7 +104,7 @@ router.get('/campaigns', auth, async (req, res) => {
 });
 
 // Get available locations
-router.get('/locations', auth, async (req, res) => {
+router.get('/locations', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 'advertiser') {
             return res.status(403).json({ error: 'Access denied' });
@@ -127,7 +127,7 @@ router.get('/locations', auth, async (req, res) => {
 });
 
 // Upload ad
-router.post('/ads', auth, upload.single('file'), async (req, res) => {
+router.post('/ads', authMiddleware, upload.single('file'), async (req, res) => {
     try {
         if (req.user.role !== 'advertiser') {
             return res.status(403).json({ error: 'Access denied' });
@@ -180,7 +180,7 @@ router.post('/ads', auth, upload.single('file'), async (req, res) => {
 });
 
 // Get transactions
-router.get('/transactions', auth, async (req, res) => {
+router.get('/transactions', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 'advertiser') {
             return res.status(403).json({ error: 'Access denied' });
