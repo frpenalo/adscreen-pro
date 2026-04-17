@@ -12,7 +12,6 @@
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 import QRCode from "qrcode";
-import { createClient } from "@supabase/supabase-js";
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -28,7 +27,7 @@ if (!partnerId || !referralUrl) {
   process.exit(1);
 }
 
-// ── Supabase ──────────────────────────────────────────────────────────────────
+// ── Supabase REST helpers (sin supabase-js para evitar validación JWT) ────────
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -37,9 +36,44 @@ if (!supabaseUrl || !serviceKey) {
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, serviceKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
+const authHeaders = {
+  "Authorization": `Bearer ${serviceKey}`,
+  "apikey": serviceKey,
+};
+
+async function uploadToStorage(bucket, storagePath, buffer, contentType) {
+  const url = `${supabaseUrl}/storage/v1/object/${bucket}/${storagePath}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { ...authHeaders, "Content-Type": contentType, "x-upsert": "true" },
+    body: buffer,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Storage upload failed (${res.status}): ${err}`);
+  }
+  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${storagePath}`;
+}
+
+async function dbDelete(table, filters) {
+  const params = Object.entries(filters).map(([k, v]) => `${k}=eq.${v}`).join("&");
+  await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
+    method: "DELETE",
+    headers: { ...authHeaders, "Content-Type": "application/json", "Prefer": "return=minimal" },
+  });
+}
+
+async function dbInsert(table, row) {
+  const res = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+    method: "POST",
+    headers: { ...authHeaders, "Content-Type": "application/json", "Prefer": "return=minimal" },
+    body: JSON.stringify(row),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`DB insert failed (${res.status}): ${err}`);
+  }
+}
 
 const tmpDir = os.tmpdir();
 
@@ -58,16 +92,7 @@ async function main() {
   // ── 2. Upload QR to Supabase Storage ────────────────────────────────────
   console.log("☁️  Uploading QR to Supabase Storage...");
   const qrStoragePath = `partner-qr/${partnerId}.png`;
-  const { error: qrErr } = await supabase.storage
-    .from("ad-media")
-    .upload(qrStoragePath, fs.readFileSync(qrLocalPath), {
-      contentType: "image/png",
-      upsert: true,
-    });
-  if (qrErr) throw new Error(`QR upload failed: ${qrErr.message}`);
-
-  const { data: qrUrlData } = supabase.storage.from("ad-media").getPublicUrl(qrStoragePath);
-  const qrPublicUrl = qrUrlData.publicUrl;
+  const qrPublicUrl = await uploadToStorage("ad-media", qrStoragePath, fs.readFileSync(qrLocalPath), "image/png");
   console.log("✅ QR URL:", qrPublicUrl);
 
   // ── 3. Bundle Remotion ───────────────────────────────────────────────────
@@ -109,35 +134,20 @@ async function main() {
   // ── 6. Upload MP4 to Supabase Storage ───────────────────────────────────
   console.log("☁️  Uploading video to Supabase Storage...");
   const videoStoragePath = `partner-sales-ads/${partnerId}.mp4`;
-  const { error: videoErr } = await supabase.storage
-    .from("ad-media")
-    .upload(videoStoragePath, fs.readFileSync(outputPath), {
-      contentType: "video/mp4",
-      upsert: true,
-    });
-  if (videoErr) throw new Error(`Video upload failed: ${videoErr.message}`);
-
-  const { data: videoUrlData } = supabase.storage.from("ad-media").getPublicUrl(videoStoragePath);
-  const videoPublicUrl = videoUrlData.publicUrl;
+  const videoPublicUrl = await uploadToStorage("ad-media", videoStoragePath, fs.readFileSync(outputPath), "video/mp4");
   console.log("✅ Video URL:", videoPublicUrl);
 
   // ── 7. Remove existing sales ad for this partner, insert new one ─────────
   console.log("🗄️  Updating ads table...");
-  await supabase
-    .from("ads")
-    .delete()
-    .eq("screen_id", partnerId)
-    .eq("advertiser_id", partnerId);
-
-  const { error: insertErr } = await supabase.from("ads").insert({
+  await dbDelete("ads", { screen_id: partnerId, advertiser_id: partnerId });
+  await dbInsert("ads", {
     advertiser_id: partnerId,
     screen_id: partnerId,
     type: "video",
     final_media_path: videoPublicUrl,
     status: "published",
-    qr_url: null, // QR is already baked into the video
+    qr_url: null,
   });
-  if (insertErr) throw new Error(`DB insert failed: ${insertErr.message}`);
 
   // ── 8. Cleanup temp files ────────────────────────────────────────────────
   fs.unlinkSync(qrLocalPath);

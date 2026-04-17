@@ -53,7 +53,7 @@ jobs:
 
       - name: Install render script extra dependencies
         working-directory: remotion
-        run: npm install @remotion/renderer @remotion/bundler qrcode @supabase/supabase-js
+        run: npm install @remotion/renderer @remotion/bundler qrcode
 
       - name: Render video and publish
         working-directory: remotion
