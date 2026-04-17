@@ -5,10 +5,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Upload, Sparkles, Send, Loader2, Film, Trash2, Clock, CheckCircle, XCircle } from "lucide-react";
+import { Upload, Sparkles, Send, Loader2, Film, Trash2, Clock, CheckCircle, XCircle, Video } from "lucide-react";
 
 const MAX_SLOTS = 3;
 const ACCEPTED_IMAGE = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
@@ -75,6 +76,25 @@ const PartnerAdsScreen = () => {
   const [isEnhanced, setIsEnhanced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [videoMode, setVideoMode] = useState(false);
+  const [businessName, setBusinessName] = useState(profile?.business_name ?? "");
+  const [tagline, setTagline] = useState("");
+  const [cta, setCta] = useState("Visítanos");
+  const [generatingVideo, setGeneratingVideo] = useState(false);
+  const [renderingAdId, setRenderingAdId] = useState<string | null>(null);
+
+  const { data: renderingAd } = useQuery({
+    queryKey: ["rendering-ad", renderingAdId],
+    queryFn: async () => {
+      const { data } = await supabase.from("ads").select("*").eq("id", renderingAdId!).single();
+      return data;
+    },
+    enabled: !!renderingAdId,
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      return data?.final_media_path ? false : 5000;
+    },
+  });
 
   const handleFileSelect = useCallback(async (f: File) => {
     setError(null);
@@ -248,7 +268,86 @@ const PartnerAdsScreen = () => {
     setPrompt("");
     setIsEnhanced(false);
     setError(null);
+    setVideoMode(false);
+    setRenderingAdId(null);
+    setBusinessName(profile?.business_name ?? "");
+    setTagline("");
+    setCta("Visítanos");
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleGenerateVideo = async () => {
+    if (!previewUrl || !user || generatingVideo) return;
+    setGeneratingVideo(true);
+    try {
+      // 1. Upload the enhanced photo to Supabase Storage first
+      const res = await fetch(previewUrl);
+      const blob = await res.blob();
+      const photoPath = `${user.id}/video-source-${Date.now()}.jpg`;
+      const { error: uploadErr } = await supabase.storage.from("ad-media").upload(photoPath, blob, { contentType: "image/jpeg" });
+      if (uploadErr) throw uploadErr;
+      const { data: photoUrlData } = supabase.storage.from("ad-media").getPublicUrl(photoPath);
+
+      // 2. Create ad record with empty final_media_path
+      const { data: adData, error: insertErr } = await supabase.from("ads").insert({
+        advertiser_id: user.id,
+        screen_id: user.id,
+        type: "video",
+        final_media_path: "",
+        status: "draft",
+      } as any).select("id").single();
+      if (insertErr) throw insertErr;
+
+      const adId = (adData as any).id;
+
+      // 3. Call edge function to trigger render
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad-video`;
+      const { data: sessionData } = await supabase.auth.getSession();
+      await fetch(fnUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${sessionData.session?.access_token}`,
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ad_id: adId,
+          photo_url: photoUrlData.publicUrl,
+          business_name: businessName,
+          tagline,
+          cta,
+          advertiser_id: user.id,
+        }),
+      });
+
+      setRenderingAdId(adId);
+      toast({ title: "¡Video en proceso! Estará listo en ~2 minutos." });
+    } catch (e: any) {
+      toast({ title: "Error al generar video", description: e.message, variant: "destructive" });
+    } finally {
+      setGeneratingVideo(false);
+    }
+  };
+
+  const handleSubmitVideo = async () => {
+    if (!renderingAd || !user) return;
+    setSubmitting(true);
+    try {
+      await supabase.from("ads").update({ status: "pending" }).eq("id", (renderingAd as any).id);
+      await supabase.from("admin_notifications").insert({
+        type: "new_ad",
+        message: `Video animado pendiente de revisión de ${profile?.business_name ?? "un partner"}.`,
+      });
+      toast({ title: "Video enviado a revisión" });
+      queryClient.invalidateQueries({ queryKey: ["partner-local-ads"] });
+      setRenderingAdId(null);
+      setVideoMode(false);
+      handleReset();
+    } catch (e: any) {
+      toast({ title: e.message, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -352,27 +451,114 @@ const PartnerAdsScreen = () => {
                   />
                 )}
 
-                <div className="flex gap-2">
-                  {fileType === "image" && (
+                {/* AI enhance button */}
+                {fileType === "image" && !videoMode && (
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={handleEnhance}
+                    disabled={enhancing}
+                  >
+                    {enhancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    {isEnhanced ? "Mejorar de nuevo" : "Mejorar con IA"}
+                  </Button>
+                )}
+
+                {/* After AI enhancement: show two options */}
+                {isEnhanced && !videoMode && !renderingAdId && (
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1 gap-2"
+                      onClick={handleSubmit}
+                      disabled={submitting}
+                    >
+                      {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      Usar imagen
+                    </Button>
                     <Button
                       variant="outline"
                       className="flex-1 gap-2"
-                      onClick={handleEnhance}
-                      disabled={enhancing}
+                      onClick={() => setVideoMode(true)}
                     >
-                      {enhancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                      {isEnhanced ? "Mejorar de nuevo" : "Mejorar con IA"}
+                      <Video className="h-4 w-4" />
+                      Crear video animado
                     </Button>
-                  )}
+                  </div>
+                )}
+
+                {/* Normal submit when not enhanced */}
+                {!isEnhanced && !videoMode && (
                   <Button
-                    className="flex-1 gap-2"
+                    className="w-full gap-2"
                     onClick={handleSubmit}
-                    disabled={submitting}
+                    disabled={submitting || fileType === "image" && enhancing}
                   >
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     Enviar a revisión
                   </Button>
-                </div>
+                )}
+
+                {/* Video mode form */}
+                {videoMode && !renderingAdId && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-foreground">Datos para el video</p>
+                    <Input
+                      value={businessName}
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      placeholder="Nombre del negocio"
+                      className="text-sm"
+                    />
+                    <Input
+                      value={tagline}
+                      onChange={(e) => setTagline(e.target.value)}
+                      placeholder="Tagline (opcional): ej. El mejor corte de la ciudad"
+                      className="text-sm"
+                    />
+                    <Input
+                      value={cta}
+                      onChange={(e) => setCta(e.target.value)}
+                      placeholder="Call to action: ej. Visítanos"
+                      className="text-sm"
+                    />
+                    <Button
+                      className="w-full gap-2"
+                      onClick={handleGenerateVideo}
+                      disabled={generatingVideo || !businessName.trim()}
+                    >
+                      {generatingVideo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
+                      Generar video
+                    </Button>
+                  </div>
+                )}
+
+                {/* Polling state */}
+                {renderingAdId && !(renderingAd as any)?.final_media_path && (
+                  <div className="flex flex-col items-center gap-3 py-4">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Generando tu video animado...</p>
+                    <p className="text-xs text-muted-foreground">Esto toma ~2 minutos</p>
+                  </div>
+                )}
+
+                {/* Video ready */}
+                {renderingAdId && (renderingAd as any)?.final_media_path && (
+                  <div className="space-y-3">
+                    <video
+                      src={(renderingAd as any).final_media_path}
+                      controls
+                      className="w-full rounded-lg border"
+                      style={{ maxHeight: 200 }}
+                    />
+                    <Button
+                      className="w-full gap-2"
+                      onClick={handleSubmitVideo}
+                      disabled={submitting}
+                    >
+                      {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      Enviar a revisión
+                    </Button>
+                  </div>
+                )}
 
                 <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={handleReset}>
                   Cancelar

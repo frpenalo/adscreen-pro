@@ -1,6 +1,7 @@
 import "./index.css";
 import { Composition } from "remotion";
 import { SalesAd } from "./SalesAd";
+import { AdvertiserAd } from "./AdvertiserAd";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -34,6 +35,22 @@ export const RemotionRoot: React.FC = () => {
           subtitle: "EN ESTA PANTALLA",
           cta: "Escanea el código",
           qrUrl: "",
+        }}
+      />
+
+      {/* Advertiser animated ad — 1920x1080, 15s @ 30fps */}
+      <Composition
+        id="AdvertiserAd"
+        component={AdvertiserAd}
+        durationInFrames={450}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{
+          photoUrl: "",
+          businessName: "Mi Negocio",
+          tagline: "El mejor servicio de la ciudad",
+          cta: "Visítanos",
         }}
       />
     </>
