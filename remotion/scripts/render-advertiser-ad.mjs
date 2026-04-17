@@ -2,7 +2,7 @@
  * render-advertiser-ad.mjs — Render a partner's animated advertiser ad video.
  *
  * Usage:
- *   node scripts/render-advertiser-ad.mjs <ad_id> <photo_url> <business_name> <tagline> <cta>
+ *   node scripts/render-advertiser-ad.mjs <ad_id> <photo_url> <business_name> <tagline> <cta> [category]
  *
  * Env vars required:
  *   SUPABASE_URL
@@ -19,12 +19,25 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ── Args ──────────────────────────────────────────────────────────────────────
-const [adId, photoUrl, businessName, tagline, cta] = process.argv.slice(2);
+const [adId, photoUrl, businessName, tagline, cta, category] = process.argv.slice(2);
 
 if (!adId || !photoUrl || !businessName) {
-  console.error("Usage: node render-advertiser-ad.mjs <ad_id> <photo_url> <business_name> <tagline> <cta>");
+  console.error("Usage: node render-advertiser-ad.mjs <ad_id> <photo_url> <business_name> <tagline> <cta> [category]");
   process.exit(1);
 }
+
+// ── Category → AdStyle mapping ────────────────────────────────────────────────
+function categoryToAdStyle(cat) {
+  const c = (cat || "").toLowerCase().trim();
+  if (c.includes("barber") || c.includes("barberia") || c.includes("barbershop")) return "dark-gold";
+  if (c.includes("restaurante") || c.includes("restaurant") || c.includes("comida") || c.includes("food") || c.includes("balloon") || c.includes("entretenimiento")) return "warm-amber";
+  if (c.includes("belleza") || c.includes("salon") || c.includes("nail") || c.includes("spa") || c.includes("estetica")) return "rose-elegant";
+  if (c.includes("gym") || c.includes("fitness") || c.includes("automotriz") || c.includes("automotive")) return "bold-energy";
+  if (c.includes("salud") || c.includes("health") || c.includes("farmacia") || c.includes("educacion") || c.includes("education") || c.includes("retail") || c.includes("tienda")) return "clean-pro";
+  return "dark-gold";
+}
+
+const adStyle = categoryToAdStyle(category);
 
 // ── Supabase REST helpers ─────────────────────────────────────────────────────
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -84,7 +97,10 @@ async function main() {
     businessName,
     tagline: tagline || "",
     cta: cta || "Visítanos",
+    adStyle,
   };
+
+  console.log(`Category: "${category || "none"}" → adStyle: "${adStyle}"`);
 
   const composition = await selectComposition({
     serveUrl: bundleLocation,

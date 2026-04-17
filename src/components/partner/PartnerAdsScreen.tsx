@@ -48,25 +48,9 @@ const PartnerAdsScreen = () => {
   const { user } = useAuth();
   const { data: profile } = usePartnerProfile();
   const queryClient = useQueryClient();
-
   const { data: ads = [] } = usePartnerAds(user?.id);
-  const slotsUsed = ads.length;
-  const slotsLeft = Math.max(0, MAX_SLOTS - slotsUsed);
 
-  if (profile?.status !== "approved") {
-    return (
-      <div className="max-w-lg mx-auto mt-12 text-center space-y-3">
-        <div className="h-12 w-12 rounded-full bg-yellow-100 flex items-center justify-center mx-auto">
-          <Clock className="h-6 w-6 text-yellow-600" />
-        </div>
-        <h2 className="text-lg font-semibold text-foreground">Cuenta pendiente de aprobación</h2>
-        <p className="text-sm text-muted-foreground">
-          Tu cuenta está siendo revisada. Una vez aprobada podrás subir anuncios a tu pantalla.
-        </p>
-      </div>
-    );
-  }
-
+  // ALL hooks must be declared before any conditional return
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [fileType, setFileType] = useState<"image" | "video">("image");
@@ -77,7 +61,7 @@ const PartnerAdsScreen = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [videoMode, setVideoMode] = useState(false);
-  const [businessName, setBusinessName] = useState(profile?.business_name ?? "");
+  const [businessName, setBusinessName] = useState("");
   const [tagline, setTagline] = useState("");
   const [cta, setCta] = useState("Visítanos");
   const [generatingVideo, setGeneratingVideo] = useState(false);
@@ -91,12 +75,33 @@ const PartnerAdsScreen = () => {
     },
     enabled: !!renderingAdId,
     refetchInterval: (query) => {
-      const data = query.state.data as any;
-      return data?.final_media_path ? false : 5000;
+      const d = query.state.data as any;
+      return d?.final_media_path ? false : 5000;
     },
   });
 
-  const handleFileSelect = useCallback(async (f: File) => {
+  const slotsUsed = ads.length;
+  const slotsLeft = Math.max(0, MAX_SLOTS - slotsUsed);
+
+  // ── Conditional return AFTER all hooks ──────────────────────────────────────
+  if (!profile) return null; // still loading
+
+  if (profile.status !== "approved") {
+    return (
+      <div className="max-w-lg mx-auto mt-12 text-center space-y-3">
+        <div className="h-12 w-12 rounded-full bg-yellow-100 flex items-center justify-center mx-auto">
+          <Clock className="h-6 w-6 text-yellow-600" />
+        </div>
+        <h2 className="text-lg font-semibold text-foreground">Cuenta pendiente de aprobación</h2>
+        <p className="text-sm text-muted-foreground">
+          Tu cuenta está siendo revisada. Una vez aprobada podrás subir anuncios a tu pantalla.
+        </p>
+      </div>
+    );
+  }
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+  const handleFileSelect = async (f: File) => {
     setError(null);
     const isImage = f.type.startsWith("image/") && ACCEPTED_IMAGE.includes(f.type);
     const isVideo = f.type.startsWith("video/");
@@ -105,12 +110,10 @@ const PartnerAdsScreen = () => {
       setError("Solo se aceptan imágenes (JPG, PNG, WEBP) o videos (MP4, MOV, WEBM).");
       return;
     }
-
     if (isImage && f.size > 15 * 1024 * 1024) {
       setError("La imagen no puede pesar más de 15MB.");
       return;
     }
-
     if (isVideo && f.size > 200 * 1024 * 1024) {
       setError("El video no puede pesar más de 200MB.");
       return;
@@ -142,13 +145,12 @@ const PartnerAdsScreen = () => {
       setPreviewUrl(url);
       setIsEnhanced(false);
     }
-  }, []);
+  };
 
   const handleEnhance = async () => {
     if (!file || fileType !== "image") return;
     setEnhancing(true);
     try {
-      // Always use original file, never the enhanced preview — avoids text duplication
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve((reader.result as string).split(",")[1]);
@@ -156,19 +158,21 @@ const PartnerAdsScreen = () => {
         reader.readAsDataURL(file);
       });
 
-      const { data, error } = await supabase.functions.invoke("generate-ad", {
+      const { data, error: fnErr } = await supabase.functions.invoke("generate-ad", {
         body: {
           imageBase64: base64,
           mimeType: file.type,
           prompt: prompt.trim() || "Anuncio de barbería local",
-          businessName: profile?.business_name ?? "",
+          businessName: profile.business_name ?? "",
           style: "impacto",
         },
       });
-      if (error) throw error;
+      if (fnErr) throw fnErr;
       if (data?.imageUrl) {
         setPreviewUrl(data.imageUrl);
         setIsEnhanced(true);
+      } else {
+        toast({ title: "La IA no devolvió imagen. Intenta de nuevo.", variant: "destructive" });
       }
     } catch (e: any) {
       toast({ title: "Error al mejorar con IA", description: e.message, variant: "destructive" });
@@ -237,7 +241,7 @@ const PartnerAdsScreen = () => {
 
       await supabase.from("admin_notifications").insert({
         type: "new_ad",
-        message: `Anuncio local pendiente de revisión de ${profile?.business_name ?? "un partner"}.`,
+        message: `Anuncio local pendiente de revisión de ${profile.business_name ?? "un partner"}.`,
       });
 
       toast({ title: "Anuncio enviado a revisión" });
@@ -254,8 +258,8 @@ const PartnerAdsScreen = () => {
   };
 
   const handleDelete = async (adId: string) => {
-    const { error } = await supabase.from("ads").delete().eq("id", adId);
-    if (error) toast({ title: error.message, variant: "destructive" });
+    const { error: delErr } = await supabase.from("ads").delete().eq("id", adId);
+    if (delErr) toast({ title: delErr.message, variant: "destructive" });
     else {
       toast({ title: "Anuncio eliminado" });
       queryClient.invalidateQueries({ queryKey: ["partner-local-ads"] });
@@ -270,7 +274,7 @@ const PartnerAdsScreen = () => {
     setError(null);
     setVideoMode(false);
     setRenderingAdId(null);
-    setBusinessName(profile?.business_name ?? "");
+    setBusinessName(profile.business_name ?? "");
     setTagline("");
     setCta("Visítanos");
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -280,27 +284,30 @@ const PartnerAdsScreen = () => {
     if (!previewUrl || !user || generatingVideo) return;
     setGeneratingVideo(true);
     try {
-      // 1. Upload the enhanced photo to Supabase Storage first
       const res = await fetch(previewUrl);
       const blob = await res.blob();
       const photoPath = `${user.id}/video-source-${Date.now()}.jpg`;
-      const { error: uploadErr } = await supabase.storage.from("ad-media").upload(photoPath, blob, { contentType: "image/jpeg" });
+      const { error: uploadErr } = await supabase.storage
+        .from("ad-media")
+        .upload(photoPath, blob, { contentType: "image/jpeg" });
       if (uploadErr) throw uploadErr;
       const { data: photoUrlData } = supabase.storage.from("ad-media").getPublicUrl(photoPath);
 
-      // 2. Create ad record with empty final_media_path
-      const { data: adData, error: insertErr } = await supabase.from("ads").insert({
-        advertiser_id: user.id,
-        screen_id: user.id,
-        type: "video",
-        final_media_path: "",
-        status: "draft",
-      } as any).select("id").single();
+      const { data: adData, error: insertErr } = await supabase
+        .from("ads")
+        .insert({
+          advertiser_id: user.id,
+          screen_id: user.id,
+          type: "video",
+          final_media_path: "",
+          status: "draft",
+        } as any)
+        .select("id")
+        .single();
       if (insertErr) throw insertErr;
 
       const adId = (adData as any).id;
 
-      // 3. Call edge function to trigger render
       const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad-video`;
       const { data: sessionData } = await supabase.auth.getSession();
       await fetch(fnUrl, {
@@ -336,7 +343,7 @@ const PartnerAdsScreen = () => {
       await supabase.from("ads").update({ status: "pending" }).eq("id", (renderingAd as any).id);
       await supabase.from("admin_notifications").insert({
         type: "new_ad",
-        message: `Video animado pendiente de revisión de ${profile?.business_name ?? "un partner"}.`,
+        message: `Video animado pendiente de revisión de ${profile.business_name ?? "un partner"}.`,
       });
       toast({ title: "Video enviado a revisión" });
       queryClient.invalidateQueries({ queryKey: ["partner-local-ads"] });
@@ -350,9 +357,9 @@ const PartnerAdsScreen = () => {
     }
   };
 
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 max-w-lg mx-auto">
-      {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-foreground">Mis Anuncios Locales</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
@@ -360,13 +367,11 @@ const PartnerAdsScreen = () => {
         </p>
       </div>
 
-      {/* Slots counter */}
       <div className={`flex items-center justify-between px-4 py-2.5 rounded-lg border text-sm font-medium ${slotsLeft > 0 ? "bg-primary/5 border-primary/20 text-primary" : "bg-destructive/10 border-destructive/20 text-destructive"}`}>
         <span>Slots disponibles</span>
         <span>{slotsLeft} de {MAX_SLOTS}</span>
       </div>
 
-      {/* Existing ads */}
       {ads.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -407,7 +412,6 @@ const PartnerAdsScreen = () => {
         </Card>
       )}
 
-      {/* Upload new ad */}
       {slotsLeft > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -429,7 +433,11 @@ const PartnerAdsScreen = () => {
                     type="file"
                     accept={ACCEPT_STRING}
                     className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFileSelect(f);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
                   />
                 </label>
                 {error && <p className="text-xs text-destructive">{error}</p>}
@@ -451,8 +459,8 @@ const PartnerAdsScreen = () => {
                   />
                 )}
 
-                {/* AI enhance button */}
-                {fileType === "image" && !videoMode && (
+                {/* Mejorar con IA */}
+                {fileType === "image" && !videoMode && !renderingAdId && (
                   <Button
                     variant="outline"
                     className="w-full gap-2"
@@ -460,45 +468,35 @@ const PartnerAdsScreen = () => {
                     disabled={enhancing}
                   >
                     {enhancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {isEnhanced ? "Mejorar de nuevo" : "Mejorar con IA"}
+                    {isEnhanced ? "Mejorar de nuevo con IA" : "Mejorar con IA"}
                   </Button>
                 )}
 
-                {/* After AI enhancement: show two options */}
-                {isEnhanced && !videoMode && !renderingAdId && (
-                  <div className="flex gap-2">
+                {/* Usar imagen / Crear video — siempre visibles */}
+                {!videoMode && !renderingAdId && (
+                  <div className={fileType === "image" ? "flex gap-2" : ""}>
                     <Button
                       className="flex-1 gap-2"
                       onClick={handleSubmit}
                       disabled={submitting}
                     >
                       {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      Usar imagen
+                      {fileType === "video" ? "Enviar a revisión" : "Usar imagen"}
                     </Button>
-                    <Button
-                      variant="outline"
-                      className="flex-1 gap-2"
-                      onClick={() => setVideoMode(true)}
-                    >
-                      <Video className="h-4 w-4" />
-                      Crear video animado
-                    </Button>
+                    {fileType === "image" && (
+                      <Button
+                        variant="outline"
+                        className="flex-1 gap-2"
+                        onClick={() => setVideoMode(true)}
+                      >
+                        <Video className="h-4 w-4" />
+                        Crear video animado
+                      </Button>
+                    )}
                   </div>
                 )}
 
-                {/* Normal submit when not enhanced */}
-                {!isEnhanced && !videoMode && (
-                  <Button
-                    className="w-full gap-2"
-                    onClick={handleSubmit}
-                    disabled={submitting || fileType === "image" && enhancing}
-                  >
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    Enviar a revisión
-                  </Button>
-                )}
-
-                {/* Video mode form */}
+                {/* Formulario video */}
                 {videoMode && !renderingAdId && (
                   <div className="space-y-3">
                     <p className="text-sm font-medium text-foreground">Datos para el video</p>
@@ -531,7 +529,7 @@ const PartnerAdsScreen = () => {
                   </div>
                 )}
 
-                {/* Polling state */}
+                {/* Generando... */}
                 {renderingAdId && !(renderingAd as any)?.final_media_path && (
                   <div className="flex flex-col items-center gap-3 py-4">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -540,7 +538,7 @@ const PartnerAdsScreen = () => {
                   </div>
                 )}
 
-                {/* Video ready */}
+                {/* Video listo */}
                 {renderingAdId && (renderingAd as any)?.final_media_path && (
                   <div className="space-y-3">
                     <video

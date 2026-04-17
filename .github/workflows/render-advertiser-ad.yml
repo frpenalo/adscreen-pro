@@ -23,6 +23,10 @@ on:
         description: "Call to action text"
         required: false
         type: string
+      category:
+        description: "Business category (drives animation style)"
+        required: false
+        type: string
 
 jobs:
   render:
@@ -74,4 +78,5 @@ jobs:
             "${{ github.event.inputs.photo_url }}" \
             "${{ github.event.inputs.business_name }}" \
             "${{ github.event.inputs.tagline }}" \
-            "${{ github.event.inputs.cta }}"
+            "${{ github.event.inputs.cta }}" \
+            "${{ github.event.inputs.category }}"

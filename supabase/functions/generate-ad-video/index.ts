@@ -29,9 +29,9 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { ad_id, photo_url, business_name, tagline, cta, advertiser_id } = body;
+    const { ad_id, photo_url, business_name, tagline, cta, advertiser_id, category } = body;
 
-    console.log("ad_id:", ad_id, "business_name:", business_name, "advertiser_id:", advertiser_id);
+    console.log("ad_id:", ad_id, "business_name:", business_name, "category:", category, "advertiser_id:", advertiser_id);
 
     if (!ad_id || !photo_url || !business_name || !advertiser_id) {
       return new Response(
@@ -60,6 +60,7 @@ Deno.serve(async (req) => {
             business_name,
             tagline: tagline ?? "",
             cta: cta ?? "Visítanos",
+            category: category ?? "",
           },
         }),
       }

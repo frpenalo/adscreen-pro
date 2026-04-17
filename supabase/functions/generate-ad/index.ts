@@ -5,6 +5,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Safe base64 encoding that avoids stack overflow on large buffers
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -39,7 +51,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { imageBase64, mimeType, prompt, category, template, lang } = await req.json();
+    const { imageBase64, mimeType, category, adText } = await req.json();
 
     if (!imageBase64) {
       return new Response(JSON.stringify({ error: "imageBase64 required" }), {
@@ -66,14 +78,37 @@ Deno.serve(async (req) => {
       categoryKey.includes(key)
     )?.[1] ?? categoryContext.default;
 
-    const templateStyles: Record<string, string> = {
-      impacto: "Style: Dark dramatic background, bold vivid contrasting colors (neon or bright on dark), large impactful typography, intense lighting effects, high energy.",
-      premium: "Style: Clean minimalist design, lots of white space, elegant sophisticated typography, muted premium color palette, luxury aesthetic. IMPORTANT: Do NOT add white panels, boxes, or overlays on top of the image. Integrate text directly into the composition.",
-      oferta: "Style: Bright festive colors, include a promotional badge or starburst element, eye-catching discount callout, energetic and attention-grabbing.",
-      moderno: "Style: Contemporary gradient backgrounds, modern sans-serif typography, sleek professional look, trendy color combinations.",
+    // Category drives both the visual style AND the background context
+    const categoryStyles: Record<string, string> = {
+      barberia:         "Style: Dark masculine atmosphere, dramatic rim lighting, black and gold tones, sharp contrast, premium barbershop aesthetic, cinematic and powerful.",
+      barbershop:       "Style: Dark masculine atmosphere, dramatic rim lighting, black and gold tones, sharp contrast, premium barbershop aesthetic, cinematic and powerful.",
+      restaurante:      "Style: Warm inviting colors, soft golden hour lighting, rich earthy tones, appetizing and welcoming, makes the viewer want to visit.",
+      restaurant:       "Style: Warm inviting colors, soft golden hour lighting, rich earthy tones, appetizing and welcoming, makes the viewer want to visit.",
+      comida:           "Style: Vibrant food photography lighting, warm saturated colors, close-up appetite appeal, fresh and delicious atmosphere.",
+      belleza:          "Style: Soft elegant aesthetic, pastel or rose gold tones, clean luxury feel, feminine and sophisticated, high-end beauty brand look.",
+      salon:            "Style: Soft elegant aesthetic, pastel or rose gold tones, clean luxury feel, feminine and sophisticated, high-end beauty brand look.",
+      nail:             "Style: Glamorous close-up lighting, vibrant saturated nail colors, luxury beauty aesthetic, polished and premium.",
+      automotriz:       "Style: Bold industrial aesthetic, strong contrast, metallic tones, professional and trustworthy, high-performance energy.",
+      automotive:       "Style: Bold industrial aesthetic, strong contrast, metallic tones, professional and trustworthy, high-performance energy.",
+      gym:              "Style: High energy, dramatic motivational lighting, bold vivid contrasting colors, powerful and intense, fitness brand aesthetic.",
+      fitness:          "Style: High energy, dramatic motivational lighting, bold vivid contrasting colors, powerful and intense, fitness brand aesthetic.",
+      salud:            "Style: Clean trustworthy aesthetic, fresh cool tones (blues and whites), calm and professional, healthcare brand look.",
+      health:           "Style: Clean trustworthy aesthetic, fresh cool tones (blues and whites), calm and professional, healthcare brand look.",
+      farmacia:         "Style: Clean trustworthy aesthetic, fresh cool tones (blues and whites), calm and professional, pharmacy brand look.",
+      educacion:        "Style: Inspiring professional look, clean organized composition, motivational colors (blues and greens), academic and trustworthy.",
+      education:        "Style: Inspiring professional look, clean organized composition, motivational colors (blues and greens), academic and trustworthy.",
+      retail:           "Style: Vibrant commercial look, bright and eye-catching colors, product-forward composition, promotional energy.",
+      tienda:           "Style: Vibrant commercial look, bright and eye-catching colors, product-forward composition, promotional energy.",
+      balloon:          "Style: Festive and joyful, vibrant party colors (pinks, golds, purples, bright blues), playful and celebratory, event decoration aesthetic.",
+      entretenimiento:  "Style: Energetic and exciting, vivid saturated colors, dynamic lighting, entertainment brand feel.",
+      default:          "Style: Dark dramatic background, bold vivid contrasting colors, large impactful typography, intense lighting, high-end TV commercial look.",
     };
 
-    const templateStyle = templateStyles[template] ?? templateStyles.impacto;
+    const catKey = (category || "").toLowerCase().trim();
+    const categoryStyle = Object.entries(categoryStyles).find(([key]) =>
+      catKey.includes(key)
+    )?.[1] ?? categoryStyles.default;
+
 
     // Step 1: GPT-4o analyzes the image and writes a precise diffusion prompt
     const systemPrompt = `Act as an elite Prompt Engineer for image diffusion models (Nano Banana 2). Your output must be ONE SINGLE CONTINUOUS TEXT STRING.
@@ -86,26 +121,23 @@ Prompt Construction Protocol:
 
 3. Environment: Describe a premium blurred (bokeh) background related to the business category in Raleigh, NC.
 
-4. Visual Style: Apply the style provided by the user. Interpret it as lighting, color palette, and composition direction.
+4. Visual Style: Apply the category style provided. Interpret it as lighting, color palette, and composition direction.
 
-5. Text Integration: If the user provides ad text, describe it as 'Sharp, bold 3D typography integrated into the scene layout displaying: [text]'. If no text is provided, skip this step.
-
-6. Technical Quality: End strictly with: 'photorealistic, 16:9, shot on 35mm, f/2.8, high-end commercial grade, 8k'.
+5. Technical Quality: End strictly with: 'photorealistic, 16:9, shot on 35mm, f/2.8, high-end commercial grade, 8k'.
 
 PROHIBITIONS:
 - Do NOT give options (Version A, B, C)
 - Do NOT use bullet points or line breaks
 - Do NOT include introductions like 'Here is your prompt'
 - Do NOT invent registered trademarks or brand names
-- Do NOT add text that was not explicitly provided by the user
+- Do NOT add any text overlays or typography to the image
 
 REQUIRED OUTPUT: Only the prompt text in English.`;
 
     const userMessage = [
-      `Business Context: This is a local ${category || "business"} in Raleigh, NC.`,
-      `Visual Directive: The style must be ${templateStyle}.`,
-      prompt ? `Ad Copy: "${prompt}"` : "No ad copy.",
-      `Instruction: Analyze the provided image. Identify the central product or person and reimagine it using the specified style, maintaining the original composition but elevating it to a high-end TV commercial look.`,
+      `Business Category: ${category || "local business"} in Raleigh, NC.`,
+      `Visual Directive: ${categoryStyle}`,
+      `Instruction: Analyze the provided image. Identify the central subject and reimagine it using the specified style, maintaining the original composition but elevating it to a high-end TV commercial look.`,
     ].join("\n\n");
 
     const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -206,16 +238,30 @@ CRITICAL: Create a completely new commercial image. Do NOT overlay graphics or s
             const imgRes = await fetch(url);
             const imgBuf = await imgRes.arrayBuffer();
             imageMime = imgRes.headers.get("content-type") || "image/png";
-            imageData = btoa(String.fromCharCode(...new Uint8Array(imgBuf)));
+            imageData = arrayBufferToBase64(imgBuf);
           }
           break;
         }
       }
     } else if (typeof content === "string") {
-      const matches = content.match(/data:([^;]+);base64,([A-Za-z0-9+/=\n]+)/);
-      if (matches) {
-        imageMime = matches[1];
-        imageData = matches[2].replace(/\n/g, "");
+      // Try base64 data URL
+      const b64matches = content.match(/data:([^;]+);base64,([A-Za-z0-9+/=\n]+)/);
+      if (b64matches) {
+        imageMime = b64matches[1];
+        imageData = b64matches[2].replace(/\n/g, "");
+      } else {
+        // Try markdown image URL: ![image](https://...)
+        const mdMatch = content.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
+        if (mdMatch) {
+          const imgUrl = mdMatch[1];
+          console.log("Fetching image from URL:", imgUrl);
+          const imgRes = await fetch(imgUrl);
+          if (imgRes.ok) {
+            const imgBuf = await imgRes.arrayBuffer();
+            imageMime = imgRes.headers.get("content-type") || "image/jpeg";
+            imageData = arrayBufferToBase64(imgBuf);
+          }
+        }
       }
     }
 

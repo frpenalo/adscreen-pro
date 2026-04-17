@@ -53,10 +53,13 @@ El Anunciante conserva todos los derechos sobre su contenido publicitario. Al su
 CLÁUSULA 9: CONFIDENCIALIDAD
 Ambas partes acuerdan mantener confidencialidad sobre los términos económicos de este acuerdo y sobre cualquier información comercial sensible compartida durante la relación contractual.
 
-CLÁUSULA 10: LEY APLICABLE Y JURISDICCIÓN
+CLÁUSULA 10: NO ELUSIÓN
+Durante la vigencia de este acuerdo y por un período de doce (12) meses contados desde su terminación, el Anunciante se compromete a no contratar directa ni indirectamente servicios de publicidad con ningún local comercial, anfitrión de pantalla u oportunidad de colocación publicitaria que haya sido presentada al Anunciante por AdScreenPro, con el propósito de eludir las tarifas, comisiones o la intermediación de AdScreenPro.
+
+CLÁUSULA 11: LEY APLICABLE Y JURISDICCIÓN
 Este acuerdo se rige por las leyes del Estado de North Carolina, Estados Unidos de América. Cualquier disputa que no pueda resolverse de mutuo acuerdo será sometida a mediación en el Condado de Wake, NC, antes de iniciar cualquier acción legal.
 
-CLÁUSULA 11: ACUERDO COMPLETO
+CLÁUSULA 12: ACUERDO COMPLETO
 Este documento constituye el acuerdo completo entre las partes y reemplaza cualquier comunicación verbal o escrita anterior sobre el mismo objeto. Cualquier modificación requerirá forma escrita firmada por ambas partes.
 
 Al aceptar digitalmente este acuerdo, el Anunciante declara haber leído, comprendido y aceptado todos los términos y condiciones establecidos en el presente documento, con plena validez legal bajo la ley federal E-SIGN Act (15 U.S.C. § 7001 et seq.).
@@ -107,10 +110,18 @@ AdScreenPro no será responsable por daños al equipo del Local ni por interrupc
 CLÁUSULA 8: CONFIDENCIALIDAD
 Ambas partes acuerdan mantener confidencialidad sobre los términos económicos de este acuerdo y sobre cualquier información comercial sensible compartida durante la relación contractual.
 
-CLÁUSULA 9: LEY APLICABLE Y JURISDICCIÓN
+CLÁUSULA 9: RELACIÓN ENTRE LAS PARTES
+El Partner actúa en todo momento como contratista independiente de AdScreenPro. Nada en este acuerdo crea una relación de empleo, agencia, sociedad ni empresa conjunta entre las partes. Si el Partner es una persona física, declara expresamente que actúa en capacidad comercial independiente. AdScreenPro no retiene impuestos sobre las comisiones pagadas al Partner, quien es responsable de sus propias obligaciones fiscales.
+
+CLÁUSULA 10: EXCLUSIVIDAD Y NO SOLICITUD
+a) Exclusividad en el Establecimiento: El Partner acepta que AdScreenPro es el proveedor exclusivo de publicidad digital programática en el Establecimiento durante la vigencia de este acuerdo. El Partner se compromete a no instalar, ni permitir que terceros instalen, pantallas o soportes digitales destinados a la exhibición de publicidad de terceros ajenos al negocio propio del Partner, con el fin de evitar la saturación visual y proteger la efectividad de la red de anunciantes de AdScreenPro. Cualquier excepción requiere autorización previa por escrito de AdScreenPro.
+
+b) No Solicitud: Durante la vigencia de este acuerdo y por un período de doce (12) meses contados desde su terminación, el Partner se compromete a no solicitar ni inducir directa ni indirectamente a ningún local afiliado, anunciante o cliente de AdScreenPro que haya sido presentado a través de la red de AdScreenPro a terminar, reducir o eludir su relación comercial con AdScreenPro.
+
+CLÁUSULA 11: LEY APLICABLE Y JURISDICCIÓN
 Este acuerdo se rige por las leyes del Estado de North Carolina, Estados Unidos de América. Cualquier disputa que no pueda resolverse de mutuo acuerdo será sometida a mediación en el Condado de Wake, NC, antes de iniciar cualquier acción legal.
 
-CLÁUSULA 10: ACUERDO COMPLETO
+CLÁUSULA 12: ACUERDO COMPLETO
 Este documento constituye el acuerdo completo entre las partes respecto a su objeto y reemplaza cualquier acuerdo verbal o escrito anterior. Cualquier modificación deberá constar por escrito y ser aceptada por ambas partes.
 
 Al aceptar digitalmente este acuerdo, el Partner declara haber leído, comprendido y aceptado todos los términos y condiciones establecidos en el presente documento, con plena validez legal bajo la ley federal E-SIGN Act (15 U.S.C. § 7001 et seq.).

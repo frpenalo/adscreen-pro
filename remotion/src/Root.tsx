@@ -38,11 +38,11 @@ export const RemotionRoot: React.FC = () => {
         }}
       />
 
-      {/* Advertiser animated ad — 1920x1080, 15s @ 30fps */}
+      {/* Advertiser animated ad — 1920x1080, 10s @ 30fps */}
       <Composition
         id="AdvertiserAd"
         component={AdvertiserAd}
-        durationInFrames={450}
+        durationInFrames={300}
         fps={30}
         width={1920}
         height={1080}
@@ -51,6 +51,7 @@ export const RemotionRoot: React.FC = () => {
           businessName: "Mi Negocio",
           tagline: "El mejor servicio de la ciudad",
           cta: "Visítanos",
+          adStyle: "dark-gold",
         }}
       />
     </>
