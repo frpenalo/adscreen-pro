@@ -1,0 +1,25 @@
+project_id = "qrlzbveaoibyidpwlwmz"
+
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.check-subscription]
+verify_jwt = false
+
+[functions.customer-portal]
+verify_jwt = false
+
+[functions.approve-ad]
+verify_jwt = false
+
+[functions.demo-login]
+verify_jwt = false
+
+[functions.generate-ad]
+verify_jwt = false
+
+[functions.register-goaffpro-affiliate]
+verify_jwt = false
+
+[functions.sync-goaffpro-affiliate]
+verify_jwt = false
