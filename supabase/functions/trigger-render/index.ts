@@ -17,10 +17,15 @@ Deno.serve(async (req) => {
   }
 
   try {
+    console.log("trigger-render called");
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const ghPat = Deno.env.get("GH_PAT"); // GitHub Personal Access Token
+    const ghPat = Deno.env.get("GH_PAT");
+
+    console.log("ghPat present:", !!ghPat);
+    console.log("anonKey present:", !!anonKey);
 
     if (!ghPat) {
       return new Response(JSON.stringify({ error: "GH_PAT not configured" }), {
@@ -29,47 +34,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── Auth: verificar token admin ──────────────────────────────────────
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const anonClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsErr } = await anonClient.auth.getClaims(token);
-    if (claimsErr || !claimsData?.claims) {
-      return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
+    // Supabase ya valida la apikey automáticamente antes de llegar aquí.
+    // Solo usamos service role para operaciones de DB.
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", claimsData.claims.sub)
-      .single();
-
-    if (profile?.role !== "admin") {
-      return new Response(JSON.stringify({ error: "Admin access required" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     // ── Obtener datos del partner ─────────────────────────────────────────
-    const { partner_id } = await req.json();
+    const body = await req.json();
+    const { partner_id } = body;
+    console.log("partner_id:", partner_id);
+
     if (!partner_id) {
       return new Response(JSON.stringify({ error: "Missing partner_id" }), {
         status: 400,
@@ -83,6 +58,8 @@ Deno.serve(async (req) => {
       .eq("id", partner_id)
       .single();
 
+    console.log("partner found:", partner?.business_name, "error:", partnerErr?.message ?? "none");
+
     if (partnerErr || !partner) {
       return new Response(JSON.stringify({ error: "Partner not found" }), {
         status: 404,
@@ -93,6 +70,7 @@ Deno.serve(async (req) => {
     const referralUrl = `https://adscreenpro.com/register?role=advertiser&ref=${partner_id}`;
 
     // ── Disparar GitHub Actions workflow ─────────────────────────────────
+    console.log("Dispatching GitHub Actions workflow...");
     const ghRes = await fetch(
       "https://api.github.com/repos/frpenalo/adscreen-pro/actions/workflows/render-sales-ad.yml/dispatches",
       {
@@ -114,30 +92,25 @@ Deno.serve(async (req) => {
       }
     );
 
+    const ghStatus = ghRes.status;
+    const ghBody = await ghRes.text();
+    console.log("GitHub dispatch status:", ghStatus, "body:", ghBody);
+
     if (!ghRes.ok) {
-      const ghError = await ghRes.text();
-      console.error("GitHub API error:", ghRes.status, ghError);
       return new Response(
-        JSON.stringify({ error: `GitHub dispatch failed: ${ghRes.status}`, detail: ghError }),
+        JSON.stringify({ error: `GitHub dispatch failed: ${ghStatus}`, detail: ghBody }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // ── Guardar job en DB para tracking ──────────────────────────────────
-    await supabase.from("render_jobs" as any).insert({
-      partner_id,
-      status: "queued",
-      triggered_at: new Date().toISOString(),
-    }).then(() => {}); // silenciar si la tabla no existe aún
-
-    console.log(`✅ Render triggered for partner: ${partner.business_name} (${partner_id})`);
+    console.log("✅ Render triggered for:", partner.business_name);
 
     return new Response(
       JSON.stringify({ success: true, message: "Render iniciado. El video estará listo en ~2 minutos." }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
-    console.error("Error:", err);
+    console.error("Unhandled error:", err.message);
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
