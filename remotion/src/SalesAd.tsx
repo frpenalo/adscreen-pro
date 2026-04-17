@@ -208,7 +208,7 @@ export const SalesAd: React.FC<SalesAdProps> = ({
         <div style={{ transform: `translateX(${tagX}px)`, opacity: tagOp, marginBottom: 48 }}>
           <span style={{
             color: CREAM,
-            fontSize: 18,
+            fontSize: 26,
             fontWeight: 300,
             letterSpacing: 4,
             fontFamily: "Arial, sans-serif",
