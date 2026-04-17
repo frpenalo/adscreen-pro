@@ -45,9 +45,10 @@ export const SalesAd: React.FC<SalesAdProps> = ({
   const T_LABEL     = 20;   // label AdScreenPro
   const T_HEADLINE  = 35;   // letras del headline
   const T_SUBTITLE  = 80;   // subtítulo
-  const T_SEP       = 115;  // separador + shimmer
-  const T_QR        = 145;  // QR + corners
-  const T_PARTICLES = 210;  // partículas
+  const T_TAGLINE   = 105;  // tagline "y en otras..."
+  const T_SEP       = 130;  // separador + shimmer
+  const T_QR        = 160;  // QR + corners
+  const T_PARTICLES = 220;  // partículas
 
   const CHAR_DELAY = 5; // frames entre letras
 
@@ -67,6 +68,14 @@ export const SalesAd: React.FC<SalesAdProps> = ({
   const subProgress = spring({ frame: frame - T_SUBTITLE, fps, config: { damping: 14, stiffness: 80 } });
   const subY   = interpolate(subProgress, [0, 1], [50, 0]);
   const subOp  = interpolate(subProgress, [0, 1], [0, 1]);
+
+  // ── Tagline ────────────────────────────────────────────────────────────────
+  const tagOp = interpolate(frame, [T_TAGLINE, T_TAGLINE + 20], [0, 1], {
+    extrapolateLeft: "clamp", extrapolateRight: "clamp",
+  });
+  const tagX = interpolate(frame, [T_TAGLINE, T_TAGLINE + 20], [20, 0], {
+    extrapolateLeft: "clamp", extrapolateRight: "clamp",
+  });
 
   // ── Separador ─────────────────────────────────────────────────────────────
   const sepProgress = spring({ frame: frame - T_SEP, fps, config: { damping: 18, stiffness: 90 } });
@@ -192,6 +201,21 @@ export const SalesAd: React.FC<SalesAdProps> = ({
             fontFamily: "Arial, sans-serif",
           }}>
             {subtitle}
+          </span>
+        </div>
+
+        {/* Tagline */}
+        <div style={{ transform: `translateX(${tagX}px)`, opacity: tagOp, marginBottom: 48 }}>
+          <span style={{
+            color: CREAM,
+            fontSize: 18,
+            fontWeight: 300,
+            letterSpacing: 4,
+            fontFamily: "Arial, sans-serif",
+            opacity: 0.6,
+            fontStyle: "italic",
+          }}>
+            y en otras en toda la ciudad
           </span>
         </div>
 
