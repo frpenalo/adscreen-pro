@@ -14,11 +14,10 @@ export const RemotionRoot: React.FC = () => {
         width={1920}
         height={1080}
         defaultProps={{
-          headline: "¿Quieres que tus clientes\nte vean aquí?",
-          subtitle: "Anúnciate en esta pantalla",
-          cta: "Escanea y reserva tu espacio",
+          headline: "ANÚNCIATE",
+          subtitle: "EN ESTA PANTALLA",
+          cta: "Escanea el código",
           qrUrl: "",
-          accentColor: "#7C3AED",
         }}
       />
 
@@ -31,11 +30,10 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         defaultProps={{
-          headline: "¿Quieres que tus clientes\nte vean aquí?",
-          subtitle: "Anúnciate en esta pantalla",
-          cta: "Escanea y reserva tu espacio",
+          headline: "ANÚNCIATE",
+          subtitle: "EN ESTA PANTALLA",
+          cta: "Escanea el código",
           qrUrl: "",
-          accentColor: "#7C3AED",
         }}
       />
     </>

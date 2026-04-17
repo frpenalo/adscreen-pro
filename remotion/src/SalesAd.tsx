@@ -4,284 +4,269 @@ import {
   Img,
   interpolate,
   spring,
-  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 
-// ─── Timing (frames @ 30fps) ───────────────────────────────────────────────
-// 0-20   : background breathes in
-// 20-50  : main headline slides up
-// 50-80  : subtitle fades in
-// 80-120 : QR + CTA zoom in
-// 120-300: hold (loop-friendly pause)
-// Total  : 300 frames = 10 seconds
+// ── Paleta Gold Premium ───────────────────────────────────────────────────────
+const GOLD = "#C9A84C";
+const GOLD_LIGHT = "#FFE08A";
+const GOLD_DIM = "#8B6914";
+const CREAM = "#F5F0E8";
+const BG = "#080808";
+
+// ── Partículas (posiciones determinísticas) ───────────────────────────────────
+const PARTICLES = Array.from({ length: 12 }, (_, i) => ({
+  x: [8, 15, 25, 38, 52, 62, 72, 80, 88, 92, 18, 70][i],
+  y: [15, 72, 35, 88, 12, 60, 30, 82, 45, 20, 55, 68][i],
+  size: 2 + (i % 3),
+  speed: 0.25 + (i % 5) * 0.08,
+  phase: i * 0.63,
+}));
 
 interface SalesAdProps {
   headline?: string;
   subtitle?: string;
   cta?: string;
-  qrUrl?: string; // URL to a QR image (png/svg hosted in Supabase)
-  accentColor?: string;
+  qrUrl?: string;
 }
 
 export const SalesAd: React.FC<SalesAdProps> = ({
-  headline = "¿Quieres que tus clientes\nte vean aquí?",
-  subtitle = "Anúnciate en esta pantalla",
-  cta = "Escanea y reserva tu espacio",
+  headline = "ANÚNCIATE",
+  subtitle = "EN ESTA PANTALLA",
+  cta = "Escanea el código",
   qrUrl = "",
-  accentColor = "#7C3AED",
 }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width } = useVideoConfig();
 
-  // ── Background pulse (subtle scale oscillation) ─────────────────────────
-  const bgScale = 1 + 0.03 * Math.sin((frame / fps) * Math.PI * 0.5);
+  // ── Timing (frames @ 30fps) ───────────────────────────────────────────────
+  const T_LINE      = 0;    // línea horizontal
+  const T_LABEL     = 20;   // label AdScreenPro
+  const T_HEADLINE  = 35;   // letras del headline
+  const T_SUBTITLE  = 80;   // subtítulo
+  const T_SEP       = 115;  // separador + shimmer
+  const T_QR        = 145;  // QR + corners
+  const T_PARTICLES = 210;  // partículas
 
-  // ── Headline slide-up ─────────────────────────────────────────────────────
-  const headlineProgress = spring({
-    frame: frame - 20,
-    fps,
-    config: { damping: 14, stiffness: 80 },
+  const CHAR_DELAY = 5; // frames entre letras
+
+  // ── Línea superior ────────────────────────────────────────────────────────
+  const lineProgress = spring({ frame: frame - T_LINE, fps, config: { damping: 20, stiffness: 60 } });
+  const lineWidth = interpolate(lineProgress, [0, 1], [0, width * 0.55]);
+
+  // ── Label ─────────────────────────────────────────────────────────────────
+  const labelOpacity = interpolate(frame, [T_LABEL, T_LABEL + 15], [0, 1], {
+    extrapolateLeft: "clamp", extrapolateRight: "clamp",
   });
-  const headlineY = interpolate(headlineProgress, [0, 1], [80, 0]);
-  const headlineOpacity = interpolate(headlineProgress, [0, 1], [0, 1]);
 
-  // ── Subtitle fade ─────────────────────────────────────────────────────────
-  const subtitleOpacity = interpolate(frame, [50, 80], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
+  // ── Headline letras ────────────────────────────────────────────────────────
+  const chars = headline.split("");
+
+  // ── Subtítulo ─────────────────────────────────────────────────────────────
+  const subProgress = spring({ frame: frame - T_SUBTITLE, fps, config: { damping: 14, stiffness: 80 } });
+  const subY   = interpolate(subProgress, [0, 1], [50, 0]);
+  const subOp  = interpolate(subProgress, [0, 1], [0, 1]);
+
+  // ── Separador ─────────────────────────────────────────────────────────────
+  const sepProgress = spring({ frame: frame - T_SEP, fps, config: { damping: 18, stiffness: 90 } });
+  const sepWidth = interpolate(sepProgress, [0, 1], [0, 280]);
+  const shimmerX = interpolate(frame, [T_SEP + 5, T_SEP + 55], [-80, 360], {
+    extrapolateLeft: "clamp", extrapolateRight: "clamp",
   });
 
-  // ── QR + CTA zoom ─────────────────────────────────────────────────────────
-  const qrProgress = spring({
-    frame: frame - 80,
-    fps,
-    config: { damping: 16, stiffness: 90 },
-  });
-  const qrScale = interpolate(qrProgress, [0, 1], [0.4, 1]);
-  const qrOpacity = interpolate(qrProgress, [0, 1], [0, 1]);
+  // ── QR ────────────────────────────────────────────────────────────────────
+  const qrProgress = spring({ frame: frame - T_QR, fps, config: { damping: 16, stiffness: 85 } });
+  const qrScale  = interpolate(qrProgress, [0, 1], [0.6, 1]);
+  const qrOp     = interpolate(qrProgress, [0, 1], [0, 1]);
+  const cornerSz = interpolate(qrProgress, [0, 1], [0, 28]);
 
-  // ── Accent bar width ──────────────────────────────────────────────────────
-  const barWidth = interpolate(frame, [55, 85], [0, 120], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
+  // ── Partículas ────────────────────────────────────────────────────────────
+  const particleOp = interpolate(frame, [T_PARTICLES, T_PARTICLES + 25], [0, 1], {
+    extrapolateLeft: "clamp", extrapolateRight: "clamp",
   });
 
   return (
-    <AbsoluteFill
-      style={{
-        background: "linear-gradient(135deg, #0f0c29 0%, #1a1040 50%, #24243e 100%)",
-        fontFamily: "Inter, system-ui, sans-serif",
-        overflow: "hidden",
-      }}
-    >
-      {/* ── Animated background orbs ── */}
-      <AbsoluteFill style={{ transform: `scale(${bgScale})` }}>
-        {/* top-left orb */}
-        <div
-          style={{
-            position: "absolute",
-            top: -200,
-            left: -200,
-            width: 700,
-            height: 700,
-            borderRadius: "50%",
-            background: `radial-gradient(circle, ${accentColor}33 0%, transparent 70%)`,
-          }}
-        />
-        {/* bottom-right orb */}
-        <div
-          style={{
-            position: "absolute",
-            bottom: -150,
-            right: -150,
-            width: 600,
-            height: 600,
-            borderRadius: "50%",
-            background: `radial-gradient(circle, #06b6d433 0%, transparent 70%)`,
-          }}
-        />
+    <AbsoluteFill style={{ backgroundColor: BG, overflow: "hidden" }}>
+
+      {/* ── Textura diagonal sutil ── */}
+      <AbsoluteFill>
+        <svg width="100%" height="100%" style={{ position: "absolute", opacity: 0.035 }}>
+          <defs>
+            <pattern id="diag" x="0" y="0" width="50" height="50" patternUnits="userSpaceOnUse">
+              <line x1="0" y1="50" x2="50" y2="0" stroke={GOLD} strokeWidth="0.6" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#diag)" />
+        </svg>
       </AbsoluteFill>
 
-      {/* ── Grid pattern overlay ── */}
-      <AbsoluteFill
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)
-          `,
-          backgroundSize: "60px 60px",
-        }}
-      />
+      {/* ── Glow radial central ── */}
+      <AbsoluteFill style={{
+        background: `radial-gradient(ellipse 70% 60% at 50% 50%, ${GOLD_DIM}18 0%, transparent 70%)`,
+      }} />
 
-      {/* ── Content ── */}
-      <AbsoluteFill
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "60px 80px",
-          gap: 0,
-        }}
-      >
-        {/* Top badge */}
-        <div
-          style={{
-            opacity: subtitleOpacity,
-            background: `${accentColor}22`,
-            border: `1px solid ${accentColor}55`,
-            borderRadius: 100,
-            padding: "8px 24px",
-            marginBottom: 40,
-          }}
-        >
-          <span
-            style={{
-              color: accentColor,
-              fontSize: 22,
-              fontWeight: 600,
-              letterSpacing: 2,
-              textTransform: "uppercase",
-            }}
-          >
+      {/* ── Partículas doradas ── */}
+      <AbsoluteFill style={{ opacity: particleOp }}>
+        {PARTICLES.map((p, i) => (
+          <div key={i} style={{
+            position: "absolute",
+            left: `${p.x + Math.sin(frame * p.speed * 0.05 + p.phase) * 1.8}%`,
+            top: `${p.y + Math.cos(frame * p.speed * 0.04 + p.phase) * 1.4}%`,
+            width: p.size,
+            height: p.size,
+            borderRadius: "50%",
+            backgroundColor: GOLD,
+            opacity: 0.35 + Math.sin(frame * 0.06 + p.phase) * 0.25,
+          }} />
+        ))}
+      </AbsoluteFill>
+
+      {/* ── Línea superior ── */}
+      <div style={{
+        position: "absolute",
+        top: 100,
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: lineWidth,
+        height: 1,
+        background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`,
+      }} />
+
+      {/* ── Contenido central ── */}
+      <AbsoluteFill style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 0,
+      }}>
+
+        {/* Label */}
+        <div style={{ opacity: labelOpacity, marginBottom: 36, letterSpacing: 7 }}>
+          <span style={{
+            color: GOLD,
+            fontSize: 16,
+            fontWeight: 400,
+            textTransform: "uppercase",
+            fontFamily: "Arial, sans-serif",
+          }}>
             AdScreenPro
           </span>
         </div>
 
-        {/* Main headline */}
-        <div
-          style={{
-            transform: `translateY(${headlineY}px)`,
-            opacity: headlineOpacity,
-            textAlign: "center",
-            marginBottom: 20,
-          }}
-        >
-          <h1
-            style={{
-              color: "#ffffff",
-              fontSize: 72,
-              fontWeight: 800,
-              lineHeight: 1.15,
-              margin: 0,
-              textShadow: "0 4px 30px rgba(0,0,0,0.4)",
-              whiteSpace: "pre-line",
-            }}
-          >
-            {headline}
-          </h1>
+        {/* Headline letra por letra */}
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 28, gap: 0 }}>
+          {chars.map((char, i) => {
+            const cf = frame - T_HEADLINE - i * CHAR_DELAY;
+            const cp = spring({ frame: cf, fps, config: { damping: 12, stiffness: 120 } });
+            const cy = interpolate(cp, [0, 1], [-80, 0]);
+            const co = interpolate(cp, [0, 1], [0, 1]);
+            return (
+              <span key={i} style={{
+                display: "inline-block",
+                transform: `translateY(${cy}px)`,
+                opacity: co,
+                color: CREAM,
+                fontSize: 104,
+                fontWeight: 700,
+                letterSpacing: char === " " ? 0 : 10,
+                marginRight: char === " " ? 30 : 0,
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                textShadow: `0 0 60px ${GOLD}33`,
+              }}>
+                {char === " " ? "\u00A0" : char}
+              </span>
+            );
+          })}
         </div>
 
-        {/* Accent bar */}
-        <div
-          style={{
-            width: barWidth,
-            height: 4,
-            background: `linear-gradient(90deg, ${accentColor}, #06b6d4)`,
-            borderRadius: 2,
-            marginBottom: 24,
-          }}
-        />
+        {/* Subtítulo */}
+        <div style={{ transform: `translateY(${subY}px)`, opacity: subOp, marginBottom: 52 }}>
+          <span style={{
+            color: GOLD,
+            fontSize: 26,
+            fontWeight: 300,
+            letterSpacing: 10,
+            textTransform: "uppercase",
+            fontFamily: "Arial, sans-serif",
+          }}>
+            {subtitle}
+          </span>
+        </div>
 
-        {/* Subtitle */}
-        <p
-          style={{
-            color: "rgba(255,255,255,0.7)",
-            fontSize: 36,
-            fontWeight: 400,
-            margin: "0 0 60px",
-            textAlign: "center",
-            opacity: subtitleOpacity,
-          }}
-        >
-          {subtitle}
-        </p>
+        {/* Separador con shimmer */}
+        <div style={{ position: "relative", width: sepWidth, height: 1, marginBottom: 56, overflow: "visible" }}>
+          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, opacity: 0.7 }} />
+          <div style={{
+            position: "absolute",
+            top: -5,
+            left: shimmerX,
+            width: 70,
+            height: 10,
+            background: `linear-gradient(90deg, transparent, ${GOLD_LIGHT}CC, transparent)`,
+          }} />
+        </div>
 
-        {/* QR + CTA */}
-        <div
-          style={{
-            transform: `scale(${qrScale})`,
-            opacity: qrOpacity,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 20,
-          }}
-        >
-          {/* QR container */}
-          <div
-            style={{
-              background: "white",
-              borderRadius: 20,
-              padding: 16,
-              boxShadow: `0 0 60px ${accentColor}44`,
-              width: 200,
-              height: 200,
+        {/* QR */}
+        <div style={{ transform: `scale(${qrScale})`, opacity: qrOp, display: "flex", flexDirection: "column", alignItems: "center", gap: 22 }}>
+
+          {/* Contenedor QR con corners */}
+          <div style={{ position: "relative", padding: 6 }}>
+
+            {/* QR image */}
+            <div style={{
+              backgroundColor: "#fff",
+              padding: 14,
+              width: 176,
+              height: 176,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-            }}
-          >
-            {qrUrl ? (
-              <Img
-                src={qrUrl}
-                style={{ width: "100%", height: "100%", objectFit: "contain" }}
-              />
-            ) : (
-              /* Placeholder QR pattern when no URL provided */
-              <svg viewBox="0 0 100 100" width="168" height="168">
-                {/* Finder patterns */}
-                <rect x="10" y="10" width="30" height="30" fill="none" stroke="#000" strokeWidth="4"/>
-                <rect x="15" y="15" width="20" height="20" fill="#000"/>
-                <rect x="60" y="10" width="30" height="30" fill="none" stroke="#000" strokeWidth="4"/>
-                <rect x="65" y="15" width="20" height="20" fill="#000"/>
-                <rect x="10" y="60" width="30" height="30" fill="none" stroke="#000" strokeWidth="4"/>
-                <rect x="15" y="65" width="20" height="20" fill="#000"/>
-                {/* Timing pattern */}
-                {[50,56,62,68,74,80,86].map((x, i) => i % 2 === 0 && <rect key={x} x={x} y="45" width="4" height="4" fill="#000"/>)}
-                {/* Data modules */}
-                {[
-                  [50,60],[56,60],[68,60],[80,60],
-                  [50,66],[62,66],[74,66],[86,66],
-                  [56,72],[68,72],[80,72],
-                  [50,78],[62,78],[74,78],[86,78],
-                  [56,84],[68,84],[80,84],
-                ].map(([x,y]) => (
-                  <rect key={`${x}-${y}`} x={x} y={y} width="4" height="4" fill="#000"/>
-                ))}
-              </svg>
-            )}
+            }}>
+              {qrUrl
+                ? <Img src={qrUrl} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                : <div style={{ width: "100%", height: "100%", backgroundColor: "#ddd" }} />
+              }
+            </div>
+
+            {/* Corners targeting */}
+            {[
+              { top: 0,    left: 0,    borderTop:    `2px solid ${GOLD}`, borderLeft:  `2px solid ${GOLD}` },
+              { top: 0,    right: 0,   borderTop:    `2px solid ${GOLD}`, borderRight: `2px solid ${GOLD}` },
+              { bottom: 0, left: 0,    borderBottom: `2px solid ${GOLD}`, borderLeft:  `2px solid ${GOLD}` },
+              { bottom: 0, right: 0,   borderBottom: `2px solid ${GOLD}`, borderRight: `2px solid ${GOLD}` },
+            ].map((s, i) => (
+              <div key={i} style={{ position: "absolute", width: cornerSz, height: cornerSz, ...s }} />
+            ))}
           </div>
 
-          {/* CTA text */}
-          <p
-            style={{
-              color: "rgba(255,255,255,0.9)",
-              fontSize: 28,
-              fontWeight: 500,
-              textAlign: "center",
-              margin: 0,
-            }}
-          >
+          {/* CTA */}
+          <span style={{
+            color: CREAM,
+            fontSize: 20,
+            fontWeight: 300,
+            letterSpacing: 5,
+            textTransform: "uppercase",
+            fontFamily: "Arial, sans-serif",
+            opacity: 0.85,
+          }}>
             {cta}
-          </p>
+          </span>
         </div>
       </AbsoluteFill>
 
-      {/* ── Bottom bar ── */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 6,
-          background: `linear-gradient(90deg, ${accentColor}, #06b6d4, ${accentColor})`,
-          opacity: subtitleOpacity,
-        }}
-      />
+      {/* ── Línea inferior ── */}
+      <div style={{
+        position: "absolute",
+        bottom: 100,
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: lineWidth,
+        height: 1,
+        background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`,
+      }} />
+
     </AbsoluteFill>
   );
 };
