@@ -78,27 +78,25 @@ const PartnersScreen = () => {
         // non-critical
       }
 
-      // 2. Auto-publish active sales template to this partner's screen
+      // 2. Disparar render de video personalizado con QR del partner
       try {
-        const { data: tpl } = await supabase
-          .from("sales_templates" as any)
-          .select("image_url, qr_base_url")
-          .eq("is_active", true)
-          .maybeSingle();
-
-        if (tpl) {
-          const qrUrl = `https://adscreenpro.com/register?role=advertiser&ref=${id}`;
-          await supabase.from("ads").insert({
-            advertiser_id: id,
-            type: ((tpl as any).type ?? "image") as const,
-            final_media_path: (tpl as any).image_url,
-            status: "published" as const,
-            screen_id: id,
-            qr_url: qrUrl,
-          } as any);
+        const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/trigger-render`;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        const renderRes = await fetch(fnUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ partner_id: id }),
+        });
+        if (renderRes.ok) {
+          toast.info("Video personalizado en proceso (~2 min)");
         }
       } catch {
-        // non-critical — template ad failure doesn't block approval
+        // non-critical — render failure doesn't block approval
       }
     }
 

@@ -1,0 +1,67 @@
+name: Render Sales Ad
+
+on:
+  workflow_dispatch:
+    inputs:
+      partner_id:
+        description: "Partner UUID"
+        required: true
+        type: string
+      partner_name:
+        description: "Partner business name"
+        required: true
+        type: string
+      referral_url:
+        description: "Referral URL to encode in QR (e.g. https://adscreenpro.com/register?role=advertiser&ref=UUID)"
+        required: true
+        type: string
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Chrome/Chromium dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxrandr2 \
+            libgbm1 \
+            libpango-1.0-0 \
+            libcairo2 \
+            libasound2-dev \
+            libx11-xcb1
+
+      - name: Install Remotion dependencies
+        working-directory: remotion
+        run: npm install
+
+      - name: Install render script extra dependencies
+        working-directory: remotion
+        run: npm install @remotion/renderer @remotion/bundler qrcode @supabase/supabase-js
+
+      - name: Render video and publish
+        working-directory: remotion
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node scripts/render.mjs \
+            "${{ github.event.inputs.partner_id }}" \
+            "${{ github.event.inputs.partner_name }}" \
+            "${{ github.event.inputs.referral_url }}"

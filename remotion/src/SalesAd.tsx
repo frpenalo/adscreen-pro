@@ -1,8 +1,10 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Img,
   interpolate,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
@@ -223,8 +225,7 @@ export const SalesAd: React.FC<SalesAdProps> = ({
             }}
           >
             {qrUrl ? (
-              // eslint-disable-next-line jsx-a11y/alt-text
-              <img
+              <Img
                 src={qrUrl}
                 style={{ width: "100%", height: "100%", objectFit: "contain" }}
               />
