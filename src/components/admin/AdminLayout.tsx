@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLang } from "@/contexts/LangContext";
 import { useAdminNotifications } from "@/hooks/useAdminData";
-import { LogOut, Users, Handshake, Film, Link2, DollarSign, FileUp, Settings, Bell, Menu, Map, Megaphone } from "lucide-react";
+import { LogOut, Users, Handshake, Film, Link2, DollarSign, FileUp, Settings, Bell, Menu, Map, Megaphone, ShoppingBag } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ const navItems = [
   { key: "payouts", icon: DollarSign },
   { key: "importCsv", icon: FileUp },
   { key: "templates", icon: Megaphone },
+  { key: "products", icon: ShoppingBag },
   { key: "settings", icon: Settings },
   { key: "notifications", icon: Bell },
 ];
@@ -79,6 +80,7 @@ const AdminLayout = ({ children, currentPage, onPageChange }: AdminLayoutProps) 
     payouts: t.adminDashboard.payouts,
     importCsv: t.adminDashboard.importCsv,
     templates: "Plantillas de Venta",
+    products: "Productos Shopify",
     settings: t.adminDashboard.settings,
     notifications: t.adminDashboard.notifications,
   };

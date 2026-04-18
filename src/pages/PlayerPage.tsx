@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { QRCodeSVG } from "qrcode.react";
+import ProductAdSlide from "@/components/player/ProductAdSlide";
 import ClockWidget from "@/components/player/ClockWidget";
 import WeatherWidget from "@/components/player/WeatherWidget";
 import JokeWidget from "@/components/player/JokeWidget";
@@ -10,9 +11,10 @@ import NewsWidget from "@/components/player/NewsWidget";
 
 interface Ad {
   id: string;
-  type: "image" | "video";
+  type: "image" | "video" | "product";
   final_media_path: string;
   qr_url?: string | null;
+  metadata?: any;
 }
 
 type WidgetType = "clock" | "weather" | "joke" | "sports" | "news";
@@ -176,7 +178,7 @@ export default function PlayerPage() {
   useEffect(() => {
     if (!loaded || ads.length === 0 || activeWidget) return;
     const ad = ads[current];
-    if (ad?.type === "image") {
+    if (ad?.type === "image" || ad?.type === "product") {
       clearImageTimer();
       imageTimerRef.current = setTimeout(next, IMAGE_DURATION);
     }
@@ -197,7 +199,7 @@ export default function PlayerPage() {
       // Query 1: general ads (screen_id IS NULL)
       const { data: generalAds, error: err1 } = await supabase
         .from("ads")
-        .select("id, type, final_media_path, qr_url")
+        .select("id, type, final_media_path, qr_url, metadata")
         .eq("status", "published")
         .is("screen_id" as any, null)
         .limit(50);
@@ -208,7 +210,7 @@ export default function PlayerPage() {
       if (screenId) {
         const { data: local, error: err2 } = await supabase
           .from("ads")
-          .select("id, type, final_media_path, qr_url")
+          .select("id, type, final_media_path, qr_url, metadata")
           .eq("status", "published")
           .eq("screen_id" as any, screenId)
           .limit(10);
@@ -221,6 +223,7 @@ export default function PlayerPage() {
         type: row.type,
         final_media_path: row.final_media_path,
         qr_url: row.qr_url ?? null,
+        metadata: row.metadata ?? null,
       }));
       setAds(list);
       saveCache(list);
@@ -283,7 +286,14 @@ export default function PlayerPage() {
           className="absolute inset-0 transition-opacity duration-300"
           style={{ opacity, zIndex: zIdx }}
         >
-          {ad.type === "image" ? (
+          {ad.type === "product" ? (
+            <ProductAdSlide
+              imageUrl={ad.metadata?.image_url ?? null}
+              title={ad.metadata?.title ?? ""}
+              price={ad.metadata?.price ?? "0.00"}
+              qrUrl={ad.qr_url ?? ""}
+            />
+          ) : ad.type === "image" ? (
             <img src={ad.final_media_path} alt="" className="w-full h-full object-contain" draggable={false} />
           ) : (
             <video
@@ -297,8 +307,8 @@ export default function PlayerPage() {
             />
           )}
 
-          {/* QR code overlay */}
-          {ad.qr_url && (
+          {/* QR code overlay — only for image ads */}
+          {ad.type === "image" && ad.qr_url && (
             <div className="absolute bottom-8 right-8 z-10 bg-white p-2 rounded-lg shadow-lg">
               <QRCodeSVG
                 value={ad.qr_url}
