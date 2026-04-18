@@ -18,13 +18,18 @@ const PartnerDashboard = () => {
   const { data: profile } = usePartnerProfile();
 
   if (!checkingContract && !acceptance && profile) {
+    const tvOwner = (
+      (profile as any).tv_owner === "adscreenpro" ||
+      user?.user_metadata?.tv_owner === "adscreenpro"
+    ) ? "adscreenpro" : "partner";
+
     return (
       <ContractAcceptanceScreen
         role="partner"
         name={profile.contact_name ?? ""}
         business={profile.business_name ?? ""}
         email={user?.email ?? ""}
-        tvOwner={(profile as any).tv_owner === "adscreenpro" ? "adscreenpro" : "partner"}
+        tvOwner={tvOwner}
         onAccepted={() => {}}
       />
     );
