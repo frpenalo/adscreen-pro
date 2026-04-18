@@ -63,6 +63,13 @@ export const SalesAd: React.FC<SalesAdProps> = ({
 
   // ── Headline letras ────────────────────────────────────────────────────────
   const chars = headline.split("");
+  const headlineFontSize = chars.length <= 10 ? 104
+    : chars.length <= 16 ? 84
+    : chars.length <= 24 ? 66
+    : chars.length <= 32 ? 54
+    : 44;
+  const headlineLetterSpacing = chars.length > 16 ? 4 : 10;
+  const headlineWordSpacing   = chars.length > 16 ? 16 : 30;
 
   // ── Subtítulo ─────────────────────────────────────────────────────────────
   const subProgress = spring({ frame: frame - T_SUBTITLE, fps, config: { damping: 14, stiffness: 80 } });
@@ -165,7 +172,16 @@ export const SalesAd: React.FC<SalesAdProps> = ({
         </div>
 
         {/* Headline letra por letra */}
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 28, gap: 0 }}>
+        <div style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 28,
+          gap: 0,
+          maxWidth: "90%",
+          textAlign: "center",
+        }}>
           {chars.map((char, i) => {
             const cf = frame - T_HEADLINE - i * CHAR_DELAY;
             const cp = spring({ frame: cf, fps, config: { damping: 12, stiffness: 120 } });
@@ -177,10 +193,10 @@ export const SalesAd: React.FC<SalesAdProps> = ({
                 transform: `translateY(${cy}px)`,
                 opacity: co,
                 color: CREAM,
-                fontSize: 104,
+                fontSize: headlineFontSize,
                 fontWeight: 700,
-                letterSpacing: char === " " ? 0 : 10,
-                marginRight: char === " " ? 30 : 0,
+                letterSpacing: char === " " ? 0 : headlineLetterSpacing,
+                marginRight: char === " " ? headlineWordSpacing : 0,
                 fontFamily: "Georgia, 'Times New Roman', serif",
                 textShadow: `0 0 60px ${GOLD}33`,
               }}>
