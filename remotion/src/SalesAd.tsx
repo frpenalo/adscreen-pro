@@ -50,7 +50,7 @@ export const SalesAd: React.FC<SalesAdProps> = ({
   const T_QR        = 160;  // QR + corners
   const T_PARTICLES = 220;  // partículas
 
-  const CHAR_DELAY = 5; // frames entre letras
+  const CHAR_DELAY = 4; // frames entre letras (más rápido al tener más texto)
 
   // ── Línea superior ────────────────────────────────────────────────────────
   const lineProgress = spring({ frame: frame - T_LINE, fps, config: { damping: 20, stiffness: 60 } });
@@ -61,15 +61,20 @@ export const SalesAd: React.FC<SalesAdProps> = ({
     extrapolateLeft: "clamp", extrapolateRight: "clamp",
   });
 
-  // ── Headline letras ────────────────────────────────────────────────────────
-  const chars = headline.split("");
-  const headlineFontSize = chars.length <= 10 ? 104
-    : chars.length <= 16 ? 84
-    : chars.length <= 24 ? 66
-    : chars.length <= 32 ? 54
-    : 44;
-  const headlineLetterSpacing = chars.length > 16 ? 4 : 10;
-  const headlineWordSpacing   = chars.length > 16 ? 16 : 30;
+  // ── Headline: tamaño adaptativo ───────────────────────────────────────────
+  // Contar solo caracteres de texto (sin saltos de línea) para decidir tamaño
+  const headlineText = headline.replace(/\n/g, " ");
+  const totalChars = headlineText.length;
+
+  const headlineFontSize = totalChars <= 10 ? 140
+    : totalChars <= 16 ? 116
+    : totalChars <= 24 ? 96
+    : totalChars <= 32 ? 80
+    : totalChars <= 42 ? 68
+    : 58;
+
+  const headlineLetterSpacing = totalChars > 20 ? 3 : 8;
+  const headlineWordSpacing   = totalChars > 20 ? 18 : 28;
 
   // ── Subtítulo ─────────────────────────────────────────────────────────────
   const subProgress = spring({ frame: frame - T_SUBTITLE, fps, config: { damping: 14, stiffness: 80 } });
@@ -100,6 +105,73 @@ export const SalesAd: React.FC<SalesAdProps> = ({
   // ── Partículas ────────────────────────────────────────────────────────────
   const particleOp = interpolate(frame, [T_PARTICLES, T_PARTICLES + 25], [0, 1], {
     extrapolateLeft: "clamp", extrapolateRight: "clamp",
+  });
+
+  // ── Renderizado de headline por palabras con soporte \n ───────────────────
+  // Dividir por \n primero, luego por palabras dentro de cada línea.
+  // Cada palabra es un flex-item; los saltos de línea son divs width:100%.
+  // Esto evita el bug donde el span de espacio parte en líneas incorrectas.
+  let globalCharIdx = 0;
+  const headlineLines = headline.split("\n");
+  const headlineElements: React.ReactNode[] = [];
+
+  headlineLines.forEach((line, lineIdx) => {
+    const words = line.split(" ").filter((w) => w.length > 0);
+    words.forEach((word, wordIdx) => {
+      // Render each char of the word with drop-in animation
+      const charSpans = word.split("").map((char, ci) => {
+        const gi = globalCharIdx++;
+        const cf = frame - T_HEADLINE - gi * CHAR_DELAY;
+        const cp = spring({ frame: cf, fps, config: { damping: 12, stiffness: 120 } });
+        const cy = interpolate(cp, [0, 1], [-80, 0]);
+        const co = interpolate(cp, [0, 1], [0, 1]);
+        return (
+          <span
+            key={ci}
+            style={{
+              display: "inline-block",
+              transform: `translateY(${cy}px)`,
+              opacity: co,
+              color: CREAM,
+              fontSize: headlineFontSize,
+              fontWeight: 700,
+              letterSpacing: headlineLetterSpacing,
+              fontFamily: "Georgia, 'Times New Roman', serif",
+              textShadow: `0 0 60px ${GOLD}33`,
+            }}
+          >
+            {char}
+          </span>
+        );
+      });
+
+      headlineElements.push(
+        <span
+          key={`line${lineIdx}-word${wordIdx}`}
+          style={{ display: "inline-flex" }}
+        >
+          {charSpans}
+        </span>
+      );
+
+      // Space between words (not after last word on a line)
+      if (wordIdx < words.length - 1) {
+        globalCharIdx++; // account for space in timing
+        headlineElements.push(
+          <span
+            key={`sp-${lineIdx}-${wordIdx}`}
+            style={{ display: "inline-block", width: headlineWordSpacing }}
+          />
+        );
+      }
+    });
+
+    // Force line break after each line except the last
+    if (lineIdx < headlineLines.length - 1) {
+      headlineElements.push(
+        <div key={`br-${lineIdx}`} style={{ width: "100%", height: 0 }} />
+      );
+    }
   });
 
   return (
@@ -156,13 +228,15 @@ export const SalesAd: React.FC<SalesAdProps> = ({
         alignItems: "center",
         justifyContent: "center",
         gap: 0,
+        paddingLeft: 80,
+        paddingRight: 80,
       }}>
 
         {/* Label */}
         <div style={{ opacity: labelOpacity, marginBottom: 36, letterSpacing: 7 }}>
           <span style={{
             color: GOLD,
-            fontSize: 16,
+            fontSize: 18,
             fontWeight: 400,
             textTransform: "uppercase",
             fontFamily: "Arial, sans-serif",
@@ -171,46 +245,25 @@ export const SalesAd: React.FC<SalesAdProps> = ({
           </span>
         </div>
 
-        {/* Headline letra por letra */}
+        {/* Headline por palabras con soporte \n */}
         <div style={{
           display: "flex",
           flexWrap: "wrap",
           alignItems: "center",
           justifyContent: "center",
-          marginBottom: 28,
-          gap: 0,
-          maxWidth: "90%",
+          marginBottom: 32,
+          maxWidth: "100%",
           textAlign: "center",
+          rowGap: 8,
         }}>
-          {chars.map((char, i) => {
-            const cf = frame - T_HEADLINE - i * CHAR_DELAY;
-            const cp = spring({ frame: cf, fps, config: { damping: 12, stiffness: 120 } });
-            const cy = interpolate(cp, [0, 1], [-80, 0]);
-            const co = interpolate(cp, [0, 1], [0, 1]);
-            return (
-              <span key={i} style={{
-                display: "inline-block",
-                transform: `translateY(${cy}px)`,
-                opacity: co,
-                color: CREAM,
-                fontSize: headlineFontSize,
-                fontWeight: 700,
-                letterSpacing: char === " " ? 0 : headlineLetterSpacing,
-                marginRight: char === " " ? headlineWordSpacing : 0,
-                fontFamily: "Georgia, 'Times New Roman', serif",
-                textShadow: `0 0 60px ${GOLD}33`,
-              }}>
-                {char === " " ? "\u00A0" : char}
-              </span>
-            );
-          })}
+          {headlineElements}
         </div>
 
         {/* Subtítulo */}
-        <div style={{ transform: `translateY(${subY}px)`, opacity: subOp, marginBottom: 52 }}>
+        <div style={{ transform: `translateY(${subY}px)`, opacity: subOp, marginBottom: 44 }}>
           <span style={{
             color: GOLD,
-            fontSize: 26,
+            fontSize: 34,
             fontWeight: 300,
             letterSpacing: 10,
             textTransform: "uppercase",
@@ -221,14 +274,14 @@ export const SalesAd: React.FC<SalesAdProps> = ({
         </div>
 
         {/* Tagline */}
-        <div style={{ transform: `translateX(${tagX}px)`, opacity: tagOp, marginBottom: 48 }}>
+        <div style={{ transform: `translateX(${tagX}px)`, opacity: tagOp, marginBottom: 44 }}>
           <span style={{
             color: CREAM,
-            fontSize: 26,
+            fontSize: 30,
             fontWeight: 300,
             letterSpacing: 4,
             fontFamily: "Arial, sans-serif",
-            opacity: 0.6,
+            opacity: 0.65,
             fontStyle: "italic",
           }}>
             y en otras en toda la ciudad
@@ -236,7 +289,7 @@ export const SalesAd: React.FC<SalesAdProps> = ({
         </div>
 
         {/* Separador con shimmer */}
-        <div style={{ position: "relative", width: sepWidth, height: 1, marginBottom: 56, overflow: "visible" }}>
+        <div style={{ position: "relative", width: sepWidth, height: 1, marginBottom: 50, overflow: "visible" }}>
           <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, opacity: 0.7 }} />
           <div style={{
             position: "absolute",
@@ -284,12 +337,12 @@ export const SalesAd: React.FC<SalesAdProps> = ({
           {/* CTA */}
           <span style={{
             color: CREAM,
-            fontSize: 20,
+            fontSize: 26,
             fontWeight: 300,
             letterSpacing: 5,
             textTransform: "uppercase",
             fontFamily: "Arial, sans-serif",
-            opacity: 0.85,
+            opacity: 0.9,
           }}>
             {cta}
           </span>
