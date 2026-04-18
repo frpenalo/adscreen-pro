@@ -62,6 +62,7 @@ const AuthRedirect = () => {
           contact_name: meta.contact_name || "",
           contact_email: meta.contact_email || "",
           contact_phone: meta.contact_phone || "",
+          tv_owner: meta.tv_owner === "adscreenpro" ? "adscreenpro" : "partner",
           ...(lat !== null ? { lat, lng } : {}),
         }, { onConflict: "id" });
 
