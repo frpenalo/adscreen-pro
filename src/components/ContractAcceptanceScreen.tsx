@@ -65,7 +65,7 @@ Este documento constituye el acuerdo completo entre las partes y reemplaza cualq
 Al aceptar digitalmente este acuerdo, el Anunciante declara haber leído, comprendido y aceptado todos los términos y condiciones establecidos en el presente documento, con plena validez legal bajo la ley federal E-SIGN Act (15 U.S.C. § 7001 et seq.).
 `;
 
-const partnerContract = (name: string, business: string, email: string) => `
+const partnerContract = (name: string, business: string, email: string, tvOwner: "partner" | "adscreenpro" = "partner") => `
 ACUERDO DE PARTNER — LOCAL COMERCIAL AFILIADO
 
 Fecha: ${CONTRACT_DATE}
@@ -99,7 +99,10 @@ b) Comisión por ventas desde pantalla: un porcentaje variable de cada venta de 
 Los pagos serán realizados entre los días 1 y 5 de cada mes calendario, correspondiente al mes anterior, a través de Zelle, ACH o el método acordado entre las partes.
 
 CLÁUSULA 5: PROPIEDAD DEL EQUIPO
-La pantalla, televisor y cualquier equipo ubicado en las instalaciones del Local es y permanece siendo propiedad exclusiva del Partner. AdScreenPro no adquiere ningún derecho sobre el equipo del Local por la sola participación en este acuerdo.
+${tvOwner === "adscreenpro"
+  ? `La pantalla, televisor y equipo provisto por AdScreenPro e instalado en las instalaciones del Local permanece siendo propiedad exclusiva de SOFTMEDIA, LLC DBA AdScreenPro. El Partner se compromete a: (a) mantener el equipo en buen estado y reportar cualquier daño o falla en un plazo razonable; (b) no trasladar, modificar ni enajenar el equipo sin autorización previa por escrito de AdScreenPro; (c) devolver el equipo en buen estado al momento de la terminación de este acuerdo, sin importar la causa. El uso del equipo no tiene costo para el Partner durante la vigencia del acuerdo. Cualquier daño por negligencia o mal uso será responsabilidad del Partner.`
+  : `La pantalla, televisor y cualquier equipo ubicado en las instalaciones del Local es y permanece siendo propiedad exclusiva del Partner. AdScreenPro no adquiere ningún derecho sobre el equipo del Local por la sola participación en este acuerdo.`
+}
 
 CLÁUSULA 6: DURACIÓN Y TERMINACIÓN
 Este acuerdo es de vigencia mensual y se renueva automáticamente cada mes. El Partner puede retirarse de la red AdScreenPro en cualquier momento, sin penalidad, notificando su decisión por escrito con al menos siete (7) días de anticipación. AdScreenPro también podrá dar por terminado el acuerdo con el mismo preaviso, salvo incumplimiento grave que justifique terminación inmediata.
@@ -117,7 +120,7 @@ c) Vigencia: Las obligaciones de confidencialidad establecidas en esta cláusula
 d) Excepciones: Las obligaciones de confidencialidad no aplican a información que: (i) sea o se convierta en de dominio público sin incumplimiento de este acuerdo; (ii) deba ser divulgada por mandato legal o de autoridad competente, en cuyo caso la parte obligada notificará a la otra con la mayor antelación posible.
 
 CLÁUSULA 9: RELACIÓN ENTRE LAS PARTES
-El Partner actúa en todo momento como contratista independiente de AdScreenPro. Nada en este acuerdo crea una relación de empleo, agencia, sociedad ni empresa conjunta entre las partes. Si el Partner es una persona física, declara expresamente que actúa en capacidad comercial independiente. AdScreenPro no retiene impuestos sobre las comisiones pagadas al Partner, quien es responsable de sus propias obligaciones fiscales.
+El Socio es un propietario de negocio independiente y un establecimiento participante en la red AdScreenPro. Nada de lo dispuesto en el presente Acuerdo constituye una relación laboral, de agencia, de sociedad o de empresa conjunta entre las partes. AdScreenPro no retiene impuestos sobre las comisiones pagadas al Partner, quien es responsable de sus propias obligaciones fiscales.
 
 CLÁUSULA 10: NO COMPETENCIA, EXCLUSIVIDAD Y NO SOLICITUD
 a) No Competencia y Exclusividad en el Establecimiento: El Partner acepta que AdScreenPro es el proveedor exclusivo de publicidad digital programática en el Establecimiento durante la vigencia de este acuerdo. Durante dicha vigencia, el Partner no podrá instalar, operar ni permitir ninguna red publicitaria de pantallas digitales de terceros en el Establecimiento que compita con los servicios de AdScreenPro provistos bajo este acuerdo, sin el consentimiento previo por escrito de AdScreenPro. Esta restricción aplica con independencia de que el Partner sea una persona física o una entidad comercial (LLC, Corp u otra), y tiene por objeto evitar la saturación visual y proteger la efectividad de la red de anunciantes de AdScreenPro.
@@ -138,10 +141,11 @@ interface Props {
   name: string;
   business: string;
   email: string;
+  tvOwner?: "partner" | "adscreenpro";
   onAccepted: () => void;
 }
 
-const ContractAcceptanceScreen = ({ role, name, business, email, onAccepted }: Props) => {
+const ContractAcceptanceScreen = ({ role, name, business, email, tvOwner = "partner", onAccepted }: Props) => {
   const contractRef = useRef<HTMLDivElement>(null);
   const [scrolledToEnd, setScrolledToEnd] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -150,7 +154,7 @@ const ContractAcceptanceScreen = ({ role, name, business, email, onAccepted }: P
 
   const contractText = role === "advertiser"
     ? advertiserContract(name, business, email)
-    : partnerContract(name, business, email);
+    : partnerContract(name, business, email, tvOwner);
 
   const handleScroll = () => {
     const el = contractRef.current;
@@ -186,7 +190,11 @@ const ContractAcceptanceScreen = ({ role, name, business, email, onAccepted }: P
             <FileText className="h-6 w-6 flex-shrink-0" />
             <div>
               <h1 className="text-lg font-bold">
-                {role === "advertiser" ? "Acuerdo de Servicios Publicitarios" : "Acuerdo de Partner — Local Afiliado"}
+                {role === "advertiser"
+                  ? "Acuerdo de Servicios Publicitarios"
+                  : tvOwner === "adscreenpro"
+                    ? "Acuerdo de Partner — Equipo Provisto por AdScreenPro"
+                    : "Acuerdo de Partner — Local Afiliado"}
               </h1>
               <p className="text-sm text-primary-foreground/80 mt-0.5">Léelo completo antes de firmar</p>
             </div>
