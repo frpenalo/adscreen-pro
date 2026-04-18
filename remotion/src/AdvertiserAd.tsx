@@ -33,7 +33,7 @@ const STYLES: Record<AdStyle, StyleConfig> = {
     textColor:        "#ffffff",
     overlay:          "linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)",
     fontFamily:       "Georgia, 'Times New Roman', serif",
-    nameFontSize:     72,
+    nameFontSize:     140,
     zoomEnd:          1.08,
     nameWeight:       700,
     nameStyle:        "normal",
@@ -42,15 +42,15 @@ const STYLES: Record<AdStyle, StyleConfig> = {
     ctaBorderRadius:  0,
     ctaBgAlpha:       0,
     textAlign:        "left",
-    lineHeight:       3,
+    lineHeight:       5,
   },
   "warm-amber": {
     accentColor:      "#E8943A",
     textColor:        "#ffffff",
     overlay:          "linear-gradient(to top, rgba(50,18,0,0.90) 0%, rgba(80,30,0,0.35) 55%, transparent 100%)",
     fontFamily:       "Arial, Helvetica, sans-serif",
-    nameFontSize:     68,
-    zoomEnd:          1.0,   // pan instead of zoom
+    nameFontSize:     132,
+    zoomEnd:          1.0,
     nameWeight:       700,
     nameStyle:        "normal",
     nameTransform:    "none",
@@ -58,14 +58,14 @@ const STYLES: Record<AdStyle, StyleConfig> = {
     ctaBorderRadius:  4,
     ctaBgAlpha:       0,
     textAlign:        "center",
-    lineHeight:       3,
+    lineHeight:       5,
   },
   "rose-elegant": {
     accentColor:      "#C9878F",
     textColor:        "#fff8f8",
     overlay:          "linear-gradient(to top, rgba(55,10,20,0.88) 0%, rgba(90,20,35,0.30) 55%, transparent 100%)",
     fontFamily:       "Georgia, serif",
-    nameFontSize:     64,
+    nameFontSize:     124,
     zoomEnd:          1.06,
     nameWeight:       400,
     nameStyle:        "italic",
@@ -74,14 +74,14 @@ const STYLES: Record<AdStyle, StyleConfig> = {
     ctaBorderRadius:  50,
     ctaBgAlpha:       0,
     textAlign:        "left",
-    lineHeight:       2,
+    lineHeight:       4,
   },
   "bold-energy": {
     accentColor:      "#3B82F6",
     textColor:        "#ffffff",
     overlay:          "linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,10,40,0.55) 50%, transparent 100%)",
     fontFamily:       "'Arial Black', Arial, sans-serif",
-    nameFontSize:     76,
+    nameFontSize:     148,
     zoomEnd:          1.12,
     nameWeight:       900,
     nameStyle:        "normal",
@@ -90,14 +90,14 @@ const STYLES: Record<AdStyle, StyleConfig> = {
     ctaBorderRadius:  2,
     ctaBgAlpha:       0.18,
     textAlign:        "left",
-    lineHeight:       3,
+    lineHeight:       5,
   },
   "clean-pro": {
     accentColor:      "#4A90D9",
     textColor:        "#ffffff",
     overlay:          "linear-gradient(to top, rgba(0,20,55,0.90) 0%, rgba(0,30,70,0.35) 55%, transparent 100%)",
     fontFamily:       "Arial, Helvetica, sans-serif",
-    nameFontSize:     68,
+    nameFontSize:     132,
     zoomEnd:          1.05,
     nameWeight:       700,
     nameStyle:        "normal",
@@ -106,7 +106,7 @@ const STYLES: Record<AdStyle, StyleConfig> = {
     ctaBorderRadius:  4,
     ctaBgAlpha:       0,
     textAlign:        "left",
-    lineHeight:       3,
+    lineHeight:       5,
   },
 };
 
@@ -156,7 +156,7 @@ export const AdvertiserAd: React.FC<AdvertiserAdProps> = ({
   // ── Accent line ──────────────────────────────────────────────────────────────
   const lineDelay = adStyle === "bold-energy" ? 15 : 25;
   const lineProgress = spring({ frame: frame - lineDelay, fps, config: { damping: 20, stiffness: 80 } });
-  const lineWidth = interpolate(lineProgress, [0, 1], [0, adStyle === "rose-elegant" ? 40 : 60]);
+  const lineWidth = interpolate(lineProgress, [0, 1], [0, adStyle === "rose-elegant" ? 80 : 120]);
 
   // ── Business name ────────────────────────────────────────────────────────────
   const nameDelay = adStyle === "bold-energy" ? 22 : 38;
@@ -260,13 +260,13 @@ export const AdvertiserAd: React.FC<AdvertiserAdProps> = ({
           <div style={{ transform: `translateY(${tagY}px)`, opacity: tagOp, marginBottom: 32 }}>
             <span style={{
               color: cfg.textColor,
-              fontSize: adStyle === "bold-energy" ? 22 : 26,
+              fontSize: adStyle === "bold-energy" ? 42 : 48,
               fontWeight: adStyle === "bold-energy" ? 600 : 300,
               fontFamily: cfg.fontFamily,
               fontStyle: cfg.nameStyle,
               textTransform: adStyle === "bold-energy" ? "uppercase" : "none",
               letterSpacing: adStyle === "bold-energy" ? 3 : 0,
-              textShadow: "0 2px 12px rgba(0,0,0,0.6)",
+              textShadow: "0 2px 16px rgba(0,0,0,0.7)",
             }}>
               {tagline}
             </span>
@@ -283,15 +283,15 @@ export const AdvertiserAd: React.FC<AdvertiserAdProps> = ({
           alignSelf: isCentered ? "center" : "flex-start",
         }}>
           <div style={{
-            border: `2px solid ${cfg.accentColor}`,
-            padding: "14px 32px",
+            border: `3px solid ${cfg.accentColor}`,
+            padding: "18px 48px",
             display: "inline-block",
             borderRadius: cfg.ctaBorderRadius,
             backgroundColor: cfg.ctaBgAlpha > 0 ? `${cfg.accentColor}${Math.round(cfg.ctaBgAlpha * 255).toString(16).padStart(2, "0")}` : "transparent",
           }}>
             <span style={{
               color: cfg.accentColor,
-              fontSize: 20,
+              fontSize: 30,
               fontWeight: 600,
               textTransform: "uppercase",
               letterSpacing: 5,
