@@ -562,7 +562,7 @@ const PartnerAdsScreen = () => {
                   <CardContent className="p-4">
                     <div className="flex flex-col items-center gap-3 py-4">
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                      <p className="text-sm font-medium text-foreground">Generando tu video animado...</p>
+                      <p className="text-sm font-medium text-foreground">Generando tu anuncio...</p>
                       <p className="text-xs text-muted-foreground">Esto toma ~2 minutos. Puedes esperar aquí.</p>
                     </div>
                   </CardContent>
