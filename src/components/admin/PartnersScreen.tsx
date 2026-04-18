@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Pencil } from "lucide-react";
+import { Pencil, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 const PartnersScreen = () => {
@@ -20,6 +20,7 @@ const PartnersScreen = () => {
   const [actionPartner, setActionPartner] = useState<{ id: string; action: "approve" | "reject" } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [editPartner, setEditPartner] = useState<{ id: string; address: string } | null>(null);
+  const [rerendering, setRerendering] = useState<string | null>(null); // partner id being re-rendered
 
   const handleSaveAddress = async () => {
     if (!editPartner) return;
@@ -43,6 +44,30 @@ const PartnersScreen = () => {
       queryClient.invalidateQueries({ queryKey: ["admin-partners"] });
     }
     setEditPartner(null);
+  };
+
+  const handleRerender = async (partnerId: string) => {
+    setRerendering(partnerId);
+    try {
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/trigger-render`;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      const res = await fetch(fnUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ partner_id: partnerId }),
+      });
+      if (res.ok) toast.success("Re-render iniciado (~2 min)");
+      else toast.error("Error al iniciar re-render");
+    } catch {
+      toast.error("Error al conectar con el servidor");
+    } finally {
+      setRerendering(null);
+    }
   };
 
   const handleAction = async () => {
@@ -135,9 +160,21 @@ const PartnersScreen = () => {
                   }</Badge>
                 </TableCell>
                 <TableCell>
-                  <button onClick={() => setEditPartner({ id: p.id, address: (p as any).address ?? "" })} className="text-muted-foreground hover:text-primary" title={(p as any).address || "Sin dirección"}>
-                    <Pencil className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setEditPartner({ id: p.id, address: (p as any).address ?? "" })} className="text-muted-foreground hover:text-primary" title={(p as any).address || "Sin dirección"}>
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    {p.status === "approved" && (
+                      <button
+                        onClick={() => handleRerender(p.id)}
+                        disabled={rerendering === p.id}
+                        className="text-muted-foreground hover:text-primary disabled:opacity-50"
+                        title="Re-renderizar video SalesAd"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${rerendering === p.id ? "animate-spin" : ""}`} />
+                      </button>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm">{new Date(p.created_at).toLocaleDateString()}</TableCell>
                 <TableCell>
