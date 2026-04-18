@@ -94,7 +94,7 @@ El Partner recibirá las siguientes compensaciones:
 
 a) Comisión por referidos: el 20% mensual del valor de la membresía de cada Anunciante que se registre como cliente activo de AdScreenPro a través del enlace único de referidos del Partner, durante el tiempo que dicho Anunciante permanezca activo.
 
-b) Comisión por ventas desde pantalla: un porcentaje variable de cada venta de producto o servicio generada directamente desde la pantalla del Local. Este porcentaje será establecido por el dueño, creador o facilitador de cada producto o servicio en acuerdo con AdScreenPro, y será comunicado al Partner de forma transparente antes de activarse en su pantalla.
+b) Comisión por ventas desde pantalla: un porcentaje variable de cada venta de producto o servicio generada directamente desde la pantalla del Local. Este porcentaje será establecido por el dueño, creador o facilitador de cada producto o servicio en acuerdo con AdScreenPro.
 
 Los pagos serán realizados entre los días 1 y 5 de cada mes calendario, correspondiente al mes anterior, a través de Zelle, ACH o el método acordado entre las partes.
 
@@ -107,16 +107,22 @@ Este acuerdo es de vigencia mensual y se renueva automáticamente cada mes. El P
 CLÁUSULA 7: RESPONSABILIDAD
 AdScreenPro no será responsable por daños al equipo del Local ni por interrupciones del servicio causadas por cortes de electricidad, fallas de internet o causas de fuerza mayor. El Local no será responsable por el contenido publicitario gestionado por AdScreenPro, siempre que haya notificado oportunamente cualquier irregularidad observada.
 
-CLÁUSULA 8: CONFIDENCIALIDAD
-Ambas partes acuerdan mantener confidencialidad sobre los términos económicos de este acuerdo y sobre cualquier información comercial sensible compartida durante la relación contractual.
+CLÁUSULA 8: CONFIDENCIALIDAD Y NO DIVULGACIÓN (NDA)
+a) Información Confidencial: Se considera información confidencial toda aquella que una parte divulgue a la otra en el marco de este acuerdo, incluyendo sin limitación: tecnología y plataforma propietaria de AdScreenPro, lista de anunciantes y locales afiliados, estructuras de precios y comisiones, estrategias comerciales, datos de rendimiento de pantallas, y cualquier otra información designada como confidencial o que por su naturaleza deba entenderse como tal.
+
+b) Obligaciones: Cada parte se compromete a: (i) no divulgar la información confidencial de la otra parte a terceros sin consentimiento previo por escrito; (ii) no utilizar dicha información para ningún propósito distinto al cumplimiento de este acuerdo; (iii) proteger la información confidencial con el mismo nivel de cuidado que aplica a su propia información confidencial, y en ningún caso con un nivel inferior al razonablemente diligente.
+
+c) Vigencia: Las obligaciones de confidencialidad establecidas en esta cláusula se mantendrán durante la vigencia de este acuerdo y por un período de dos (2) años contados desde su terminación.
+
+d) Excepciones: Las obligaciones de confidencialidad no aplican a información que: (i) sea o se convierta en de dominio público sin incumplimiento de este acuerdo; (ii) deba ser divulgada por mandato legal o de autoridad competente, en cuyo caso la parte obligada notificará a la otra con la mayor antelación posible.
 
 CLÁUSULA 9: RELACIÓN ENTRE LAS PARTES
 El Partner actúa en todo momento como contratista independiente de AdScreenPro. Nada en este acuerdo crea una relación de empleo, agencia, sociedad ni empresa conjunta entre las partes. Si el Partner es una persona física, declara expresamente que actúa en capacidad comercial independiente. AdScreenPro no retiene impuestos sobre las comisiones pagadas al Partner, quien es responsable de sus propias obligaciones fiscales.
 
-CLÁUSULA 10: EXCLUSIVIDAD Y NO SOLICITUD
-a) Exclusividad en el Establecimiento: El Partner acepta que AdScreenPro es el proveedor exclusivo de publicidad digital programática en el Establecimiento durante la vigencia de este acuerdo. El Partner se compromete a no instalar, ni permitir que terceros instalen, pantallas o soportes digitales destinados a la exhibición de publicidad de terceros ajenos al negocio propio del Partner, con el fin de evitar la saturación visual y proteger la efectividad de la red de anunciantes de AdScreenPro. Cualquier excepción requiere autorización previa por escrito de AdScreenPro.
+CLÁUSULA 10: NO COMPETENCIA, EXCLUSIVIDAD Y NO SOLICITUD
+a) No Competencia y Exclusividad en el Establecimiento: El Partner acepta que AdScreenPro es el proveedor exclusivo de publicidad digital programática en el Establecimiento durante la vigencia de este acuerdo. Durante dicha vigencia, el Partner no podrá instalar, operar ni permitir ninguna red publicitaria de pantallas digitales de terceros en el Establecimiento que compita con los servicios de AdScreenPro provistos bajo este acuerdo, sin el consentimiento previo por escrito de AdScreenPro. Esta restricción aplica con independencia de que el Partner sea una persona física o una entidad comercial (LLC, Corp u otra), y tiene por objeto evitar la saturación visual y proteger la efectividad de la red de anunciantes de AdScreenPro.
 
-b) No Solicitud: Durante la vigencia de este acuerdo y por un período de doce (12) meses contados desde su terminación, el Partner se compromete a no solicitar ni inducir directa ni indirectamente a ningún local afiliado, anunciante o cliente de AdScreenPro que haya sido presentado a través de la red de AdScreenPro a terminar, reducir o eludir su relación comercial con AdScreenPro.
+b) No Solicitud: Durante la vigencia de este acuerdo y por un período de doce (12) meses contados desde su terminación, el Partner no podrá directa ni indirectamente solicitar, inducir o persuadir a ningún local afiliado, anunciante o cliente de AdScreenPro que haya sido presentado a través de la red de AdScreenPro, a terminar, reducir o eludir su relación comercial con AdScreenPro.
 
 CLÁUSULA 11: LEY APLICABLE Y JURISDICCIÓN
 Este acuerdo se rige por las leyes del Estado de North Carolina, Estados Unidos de América. Cualquier disputa que no pueda resolverse de mutuo acuerdo será sometida a mediación en el Condado de Wake, NC, antes de iniciar cualquier acción legal.
