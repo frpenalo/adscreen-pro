@@ -260,7 +260,7 @@ export const AdvertiserAd: React.FC<AdvertiserAdProps> = ({
           <div style={{ transform: `translateY(${tagY}px)`, opacity: tagOp, marginBottom: 32 }}>
             <span style={{
               color: cfg.textColor,
-              fontSize: adStyle === "bold-energy" ? 42 : 48,
+              fontSize: adStyle === "bold-energy" ? 58 : 64,
               fontWeight: adStyle === "bold-energy" ? 600 : 300,
               fontFamily: cfg.fontFamily,
               fontStyle: cfg.nameStyle,
@@ -291,7 +291,7 @@ export const AdvertiserAd: React.FC<AdvertiserAdProps> = ({
           }}>
             <span style={{
               color: cfg.accentColor,
-              fontSize: 30,
+              fontSize: 40,
               fontWeight: 600,
               textTransform: "uppercase",
               letterSpacing: 5,
