@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePartnerProfile } from "@/hooks/usePartnerData";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,10 +6,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Upload, Sparkles, Send, Loader2, Film, Trash2, Clock, CheckCircle, XCircle, Video } from "lucide-react";
+import { Upload, Sparkles, Send, Loader2, Film, Trash2, Clock, CheckCircle, XCircle, Video, ArrowLeft } from "lucide-react";
 
 const MAX_SLOTS = 3;
 const ACCEPTED_IMAGE = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
@@ -49,26 +48,27 @@ const PartnerAdsScreen = () => {
   const { data: profile } = usePartnerProfile();
   const queryClient = useQueryClient();
   const { data: ads = [] } = usePartnerAds(user?.id);
-
-  // ALL hooks must be declared before any conditional return
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Media state ────────────────────────────────────────────────────────────
   const [file, setFile] = useState<File | null>(null);
   const [fileType, setFileType] = useState<"image" | "video">("image");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState("");
-  const [enhancing, setEnhancing] = useState(false);
-  const [isEnhanced, setIsEnhanced] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [videoMode, setVideoMode] = useState(false);
+
+  // ── Ad text fields ─────────────────────────────────────────────────────────
   const [businessName, setBusinessName] = useState("");
   const [tagline, setTagline] = useState("");
   const [cta, setCta] = useState("Visítanos");
-  const [generatingVideo, setGeneratingVideo] = useState(false);
+
+  // ── Processing state ───────────────────────────────────────────────────────
+  const [processing, setProcessing] = useState(false);   // AI enhance + render trigger
+  const [submitting, setSubmitting] = useState(false);    // direct submit
   const [renderingAdId, setRenderingAdId] = useState<string | null>(null);
 
+  // ── Poll for rendered video ────────────────────────────────────────────────
   const { data: renderingAd } = useQuery({
-    queryKey: ["rendering-ad", renderingAdId],
+    queryKey: ["rendering-ad-partner", renderingAdId],
     queryFn: async () => {
       const { data } = await supabase.from("ads").select("*").eq("id", renderingAdId!).single();
       return data;
@@ -83,8 +83,8 @@ const PartnerAdsScreen = () => {
   const slotsUsed = ads.length;
   const slotsLeft = Math.max(0, MAX_SLOTS - slotsUsed);
 
-  // ── Conditional return AFTER all hooks ──────────────────────────────────────
-  if (!profile) return null; // still loading
+  // ── Conditional return AFTER all hooks ────────────────────────────────────
+  if (!profile) return null;
 
   if (profile.status !== "approved") {
     return (
@@ -100,24 +100,18 @@ const PartnerAdsScreen = () => {
     );
   }
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
+  // ── File selection ─────────────────────────────────────────────────────────
   const handleFileSelect = async (f: File) => {
     setError(null);
     const isImage = f.type.startsWith("image/") && ACCEPTED_IMAGE.includes(f.type);
     const isVideo = f.type.startsWith("video/");
 
     if (!isImage && !isVideo) {
-      setError("Solo se aceptan imágenes (JPG, PNG, WEBP) o videos (MP4, MOV, WEBM).");
+      setError("Solo se aceptan imágenes (JPG, PNG, WEBP) o videos (MP4, MOV).");
       return;
     }
-    if (isImage && f.size > 15 * 1024 * 1024) {
-      setError("La imagen no puede pesar más de 15MB.");
-      return;
-    }
-    if (isVideo && f.size > 200 * 1024 * 1024) {
-      setError("El video no puede pesar más de 200MB.");
-      return;
-    }
+    if (isImage && f.size > 15 * 1024 * 1024) { setError("La imagen no puede pesar más de 15MB."); return; }
+    if (isVideo && f.size > 200 * 1024 * 1024) { setError("El video no puede pesar más de 200MB."); return; }
 
     const url = URL.createObjectURL(f);
 
@@ -132,73 +126,121 @@ const PartnerAdsScreen = () => {
             setFile(f);
             setFileType("image");
             setPreviewUrl(url);
-            setIsEnhanced(false);
+            setBusinessName(profile.business_name ?? "");
           }
           resolve();
         };
-        img.onerror = () => { setFile(f); setFileType("image"); setPreviewUrl(url); resolve(); };
+        img.onerror = () => { setFile(f); setFileType("image"); setPreviewUrl(url); setBusinessName(profile.business_name ?? ""); resolve(); };
         img.src = url;
       });
     } else {
       setFile(f);
       setFileType("video");
       setPreviewUrl(url);
-      setIsEnhanced(false);
     }
   };
 
-  const handleEnhance = async () => {
-    if (!file || fileType !== "image") return;
-    setEnhancing(true);
-    try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const { data, error: fnErr } = await supabase.functions.invoke("generate-ad", {
-        body: {
-          imageBase64: base64,
-          mimeType: file.type,
-          prompt: prompt.trim() || "Anuncio de barbería local",
-          businessName: profile.business_name ?? "",
-          style: "impacto",
-        },
-      });
-      if (fnErr) throw fnErr;
-      if (data?.imageUrl) {
-        setPreviewUrl(data.imageUrl);
-        setIsEnhanced(true);
-      } else {
-        toast({ title: "La IA no devolvió imagen. Intenta de nuevo.", variant: "destructive" });
-      }
-    } catch (e: any) {
-      toast({ title: "Error al mejorar con IA", description: e.message, variant: "destructive" });
-    } finally {
-      setEnhancing(false);
-    }
-  };
-
-  const compressImageBlob = (blob: Blob): Promise<Blob> =>
-    new Promise((resolve) => {
+  // ── Compress for AI ────────────────────────────────────────────────────────
+  const toBase64 = (blob: Blob): Promise<string> =>
+    new Promise((resolve, reject) => {
       const img = new window.Image();
       const url = URL.createObjectURL(blob);
       img.onload = () => {
-        const scale = img.width > 1920 ? 1920 / img.width : 1;
+        const MAX_W = 1280;
+        const scale = img.width > MAX_W ? MAX_W / img.width : 1;
         const canvas = document.createElement("canvas");
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
         canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
         URL.revokeObjectURL(url);
-        canvas.toBlob((c) => resolve(c ?? blob), "image/jpeg", 0.82);
+        resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
       };
-      img.onerror = () => resolve(blob);
+      img.onerror = reject;
       img.src = url;
     });
 
-  const handleSubmit = async () => {
+  // ── Unified: AI enhance → animated video ──────────────────────────────────
+  const handleCreateAd = async () => {
+    if (!file || !user || processing) return;
+    if (slotsLeft <= 0) {
+      toast({ title: "Alcanzaste el límite de 3 anuncios locales.", variant: "destructive" });
+      return;
+    }
+    setProcessing(true);
+    try {
+      const { data: sessionData } = await supabase.auth.refreshSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("No session");
+
+      // Step 1 — AI enhance (category drives the style)
+      const imageBase64 = await toBase64(file);
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad`;
+      const fnRes = await fetch(fnUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          imageBase64,
+          mimeType: "image/jpeg",
+          category: (profile as any)?.category ?? "",
+          adText: tagline.trim(),
+        }),
+      });
+      if (!fnRes.ok) {
+        const err = await fnRes.json().catch(() => ({}));
+        throw new Error((err as any).error || `Error ${fnRes.status}`);
+      }
+      const aiRes = await fnRes.json();
+      if (!aiRes.imageUrl) throw new Error("La IA no devolvió imagen. Intenta de nuevo.");
+
+      // Step 2 — Insert ad record + trigger Remotion render
+      const { data: adData, error: insertErr } = await supabase
+        .from("ads")
+        .insert({
+          advertiser_id: user.id,
+          screen_id: user.id,
+          type: "video",
+          final_media_path: "",
+          status: "draft",
+        } as any)
+        .select("id")
+        .single();
+      if (insertErr) throw insertErr;
+
+      const adId = (adData as any).id;
+      const videoFnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad-video`;
+      await fetch(videoFnUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ad_id: adId,
+          photo_url: aiRes.imageUrl,
+          business_name: businessName.trim() || profile.business_name || "",
+          tagline: tagline.trim(),
+          cta: cta.trim(),
+          advertiser_id: user.id,
+          category: (profile as any)?.category ?? "",
+        }),
+      });
+
+      setRenderingAdId(adId);
+      toast({ title: "¡Procesando tu anuncio! Listo en ~2 minutos." });
+    } catch (e: any) {
+      toast({ title: e.message || "Error al crear el anuncio", variant: "destructive" });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // ── Submit image directly ──────────────────────────────────────────────────
+  const handleSubmitImage = async () => {
     if (!previewUrl || !user || submitting) return;
     if (slotsLeft <= 0) {
       toast({ title: "Alcanzaste el límite de 3 anuncios locales.", variant: "destructive" });
@@ -206,50 +248,83 @@ const PartnerAdsScreen = () => {
     }
     setSubmitting(true);
     try {
-      let uploadPath: string;
-      let contentType: string;
-      let uploadBlob: Blob;
-
-      if (fileType === "video") {
-        const ext = file!.name.split(".").pop() ?? "mp4";
-        uploadPath = `${user.id}/local-${Date.now()}.${ext}`;
-        contentType = file!.type;
-        uploadBlob = file!;
-      } else {
-        const res = await fetch(previewUrl);
-        const raw = await res.blob();
-        uploadBlob = await compressImageBlob(raw);
-        uploadPath = `${user.id}/local-${Date.now()}.jpg`;
-        contentType = "image/jpeg";
-      }
-
+      const res = await fetch(previewUrl);
+      const raw = await res.blob();
+      const uploadPath = `${user.id}/local-${Date.now()}.jpg`;
       const { error: uploadErr } = await supabase.storage
         .from("ad-media")
-        .upload(uploadPath, uploadBlob, { contentType });
+        .upload(uploadPath, raw, { contentType: "image/jpeg" });
       if (uploadErr) throw uploadErr;
-
       const { data: publicUrl } = supabase.storage.from("ad-media").getPublicUrl(uploadPath);
-
       const { error: insertErr } = await supabase.from("ads").insert({
         advertiser_id: user.id,
-        type: fileType as const,
+        screen_id: user.id,
+        type: "image" as const,
         final_media_path: publicUrl.publicUrl,
         status: "draft" as const,
-        screen_id: user.id,
       } as any);
       if (insertErr) throw insertErr;
-
       await supabase.from("admin_notifications").insert({
         type: "new_ad",
         message: `Anuncio local pendiente de revisión de ${profile.business_name ?? "un partner"}.`,
       });
-
       toast({ title: "Anuncio enviado a revisión" });
       queryClient.invalidateQueries({ queryKey: ["partner-local-ads"] });
-      setFile(null);
-      setPreviewUrl(null);
-      setPrompt("");
-      setIsEnhanced(false);
+      resetState();
+    } catch (e: any) {
+      toast({ title: e.message, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Submit video directly ──────────────────────────────────────────────────
+  const handleSubmitVideo = async () => {
+    if (!file || !user || submitting) return;
+    setSubmitting(true);
+    try {
+      const ext = file.name.split(".").pop() ?? "mp4";
+      const uploadPath = `${user.id}/local-${Date.now()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("ad-media")
+        .upload(uploadPath, file, { contentType: file.type });
+      if (uploadErr) throw uploadErr;
+      const { data: publicUrl } = supabase.storage.from("ad-media").getPublicUrl(uploadPath);
+      const { error: insertErr } = await supabase.from("ads").insert({
+        advertiser_id: user.id,
+        screen_id: user.id,
+        type: "video" as const,
+        final_media_path: publicUrl.publicUrl,
+        status: "draft" as const,
+      } as any);
+      if (insertErr) throw insertErr;
+      await supabase.from("admin_notifications").insert({
+        type: "new_ad",
+        message: `Video local pendiente de revisión de ${profile.business_name ?? "un partner"}.`,
+      });
+      toast({ title: "Video enviado a revisión" });
+      queryClient.invalidateQueries({ queryKey: ["partner-local-ads"] });
+      resetState();
+    } catch (e: any) {
+      toast({ title: e.message, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Submit rendered video ──────────────────────────────────────────────────
+  const handleSubmitRenderedVideo = async () => {
+    if (!renderingAd || !user || submitting) return;
+    setSubmitting(true);
+    try {
+      await supabase.from("ads").update({ status: "pending" }).eq("id", (renderingAd as any).id);
+      await supabase.from("admin_notifications").insert({
+        type: "new_ad",
+        message: `Video animado pendiente de revisión de ${profile.business_name ?? "un partner"}.`,
+      });
+      toast({ title: "Video enviado a revisión" });
+      queryClient.invalidateQueries({ queryKey: ["partner-local-ads"] });
+      resetState();
     } catch (e: any) {
       toast({ title: e.message, variant: "destructive" });
     } finally {
@@ -266,104 +341,28 @@ const PartnerAdsScreen = () => {
     }
   };
 
-  const handleReset = () => {
+  const resetState = () => {
     setFile(null);
     setPreviewUrl(null);
-    setPrompt("");
-    setIsEnhanced(false);
+    setFileType("image");
     setError(null);
-    setVideoMode(false);
-    setRenderingAdId(null);
-    setBusinessName(profile.business_name ?? "");
+    setBusinessName("");
     setTagline("");
     setCta("Visítanos");
+    setProcessing(false);
+    setRenderingAdId(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleGenerateVideo = async () => {
-    if (!previewUrl || !user || generatingVideo) return;
-    setGeneratingVideo(true);
-    try {
-      const res = await fetch(previewUrl);
-      const blob = await res.blob();
-      const photoPath = `${user.id}/video-source-${Date.now()}.jpg`;
-      const { error: uploadErr } = await supabase.storage
-        .from("ad-media")
-        .upload(photoPath, blob, { contentType: "image/jpeg" });
-      if (uploadErr) throw uploadErr;
-      const { data: photoUrlData } = supabase.storage.from("ad-media").getPublicUrl(photoPath);
+  const videoReady = !!(renderingAd as any)?.final_media_path;
 
-      const { data: adData, error: insertErr } = await supabase
-        .from("ads")
-        .insert({
-          advertiser_id: user.id,
-          screen_id: user.id,
-          type: "video",
-          final_media_path: "",
-          status: "draft",
-        } as any)
-        .select("id")
-        .single();
-      if (insertErr) throw insertErr;
-
-      const adId = (adData as any).id;
-
-      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad-video`;
-      const { data: sessionData } = await supabase.auth.getSession();
-      await fetch(fnUrl, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${sessionData.session?.access_token}`,
-          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ad_id: adId,
-          photo_url: photoUrlData.publicUrl,
-          business_name: businessName,
-          tagline,
-          cta,
-          advertiser_id: user.id,
-        }),
-      });
-
-      setRenderingAdId(adId);
-      toast({ title: "¡Video en proceso! Estará listo en ~2 minutos." });
-    } catch (e: any) {
-      toast({ title: "Error al generar video", description: e.message, variant: "destructive" });
-    } finally {
-      setGeneratingVideo(false);
-    }
-  };
-
-  const handleSubmitVideo = async () => {
-    if (!renderingAd || !user) return;
-    setSubmitting(true);
-    try {
-      await supabase.from("ads").update({ status: "pending" }).eq("id", (renderingAd as any).id);
-      await supabase.from("admin_notifications").insert({
-        type: "new_ad",
-        message: `Video animado pendiente de revisión de ${profile.business_name ?? "un partner"}.`,
-      });
-      toast({ title: "Video enviado a revisión" });
-      queryClient.invalidateQueries({ queryKey: ["partner-local-ads"] });
-      setRenderingAdId(null);
-      setVideoMode(false);
-      handleReset();
-    } catch (e: any) {
-      toast({ title: e.message, variant: "destructive" });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 max-w-lg mx-auto">
       <div>
         <h1 className="text-xl font-bold text-foreground">Mis Anuncios Locales</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Aparecen solo en la pantalla de tu barbería. Incluido en tu plan.
+          Aparecen solo en la pantalla de tu local. Incluido en tu plan.
         </p>
       </div>
 
@@ -372,6 +371,7 @@ const PartnerAdsScreen = () => {
         <span>{slotsLeft} de {MAX_SLOTS}</span>
       </div>
 
+      {/* Existing ads list */}
       {ads.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -412,159 +412,186 @@ const PartnerAdsScreen = () => {
         </Card>
       )}
 
+      {/* Upload / create flow */}
       {slotsLeft > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Upload className="h-4 w-4" /> Subir nuevo anuncio
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!file ? (
-              <>
+        <>
+          {/* STEP 1: No file selected */}
+          {!file && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Upload className="h-4 w-4" /> Subir nuevo anuncio
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground">
-                  Sube una imagen horizontal (16:9) o un video corto. Cortes, productos, promos — lo que quieras mostrar en tu pantalla.
+                  Sube una imagen horizontal (16:9) o un video corto para tu pantalla.
                 </p>
                 <label className="flex items-center justify-center gap-2 w-full h-10 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium cursor-pointer hover:bg-primary/90 transition-colors">
                   <Upload className="h-4 w-4" /> Seleccionar imagen o video
-                  <span className="text-xs opacity-70 font-normal">(JPG, PNG, MP4, MOV)</span>
                   <input
                     ref={fileInputRef}
                     type="file"
                     accept={ACCEPT_STRING}
                     className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleFileSelect(f);
-                      if (fileInputRef.current) fileInputRef.current.value = "";
-                    }}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); if (fileInputRef.current) fileInputRef.current.value = ""; }}
                   />
                 </label>
                 {error && <p className="text-xs text-destructive">{error}</p>}
-              </>
-            ) : (
-              <>
-                {fileType === "video"
-                  ? <video src={previewUrl!} controls className="w-full rounded-lg border border-border" style={{ maxHeight: 200 }} />
-                  : <img src={previewUrl!} className="w-full rounded-lg object-cover border border-border" style={{ maxHeight: 200 }} />
-                }
+              </CardContent>
+            </Card>
+          )}
 
-                {fileType === "image" && (
-                  <Textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Describe tu anuncio para la IA (opcional): ej. 'Promo corte de pelo $15 esta semana'"
-                    rows={2}
-                    className="text-sm"
-                  />
-                )}
-
-                {/* Mejorar con IA */}
-                {fileType === "image" && !videoMode && !renderingAdId && (
-                  <Button
-                    variant="outline"
-                    className="w-full gap-2"
-                    onClick={handleEnhance}
-                    disabled={enhancing}
-                  >
-                    {enhancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {isEnhanced ? "Mejorar de nuevo con IA" : "Mejorar con IA"}
+          {/* STEP 2a: Video uploaded — just send */}
+          {file && fileType === "video" && (
+            <Card>
+              <CardContent className="p-4 space-y-4">
+                <video src={previewUrl!} controls className="w-full rounded-lg border border-border" />
+                <div className="flex gap-3">
+                  <Button variant="outline" onClick={resetState} className="flex-1">
+                    <ArrowLeft className="h-4 w-4 mr-2" /> Cambiar
                   </Button>
-                )}
+                  <Button onClick={handleSubmitVideo} disabled={submitting} className="flex-1">
+                    {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                    {submitting ? "Enviando..." : "Enviar a revisión"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-                {/* Usar imagen / Crear video — siempre visibles */}
-                {!videoMode && !renderingAdId && (
-                  <div className={fileType === "image" ? "flex gap-2" : ""}>
-                    <Button
-                      className="flex-1 gap-2"
-                      onClick={handleSubmit}
-                      disabled={submitting}
-                    >
-                      {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      {fileType === "video" ? "Enviar a revisión" : "Usar imagen"}
+          {/* STEP 2b: Image selected */}
+          {file && fileType === "image" && (
+            <div className="space-y-4">
+
+              {/* Preview */}
+              <Card>
+                <CardContent className="p-4 space-y-3">
+                  <img src={previewUrl!} alt="Preview" className="w-full rounded-lg object-cover border border-border" style={{ aspectRatio: "16/9" }} />
+                  {!processing && !renderingAdId && (
+                    <Button variant="outline" size="sm" onClick={resetState}>
+                      <ArrowLeft className="h-4 w-4 mr-1.5" /> Cambiar foto
                     </Button>
-                    {fileType === "image" && (
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Option 1: Send as-is */}
+              {!processing && !renderingAdId && (
+                <Card className="border-2 border-primary/20">
+                  <CardContent className="p-4 space-y-3">
+                    <p className="text-sm font-medium">¿Tu diseño ya está listo?</p>
+                    <p className="text-xs text-muted-foreground">Envíalo directamente sin modificar.</p>
+                    <Button onClick={handleSubmitImage} disabled={submitting} className="w-full" size="lg">
+                      {submitting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enviando...</> : <><Send className="h-4 w-4 mr-2" /> Enviar para aprobación</>}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Divider */}
+              {!processing && !renderingAdId && (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-xs text-muted-foreground font-medium">o crea un video animado</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+              )}
+
+              {/* Option 2: Animated video with AI */}
+              {!renderingAdId && (
+                <Card className="border-2 border-accent/30">
+                  <CardContent className="p-4 space-y-3">
+
+                    {!processing && (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          <p className="text-sm font-medium">Crear anuncio animado con IA</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">La IA mejora tu foto y crea un video de 10 segundos optimizado para TV.</p>
+
+                        <Input
+                          value={businessName}
+                          onChange={(e) => setBusinessName(e.target.value)}
+                          placeholder="Nombre del negocio"
+                          className="text-sm"
+                        />
+                        <Input
+                          value={tagline}
+                          onChange={(e) => setTagline(e.target.value)}
+                          placeholder="Tagline (ej. El mejor corte de la ciudad)"
+                          className="text-sm"
+                        />
+                        <Input
+                          value={cta}
+                          onChange={(e) => setCta(e.target.value)}
+                          placeholder="Call to action (ej. Visítanos)"
+                          className="text-sm"
+                        />
+                      </>
+                    )}
+
+                    {/* Processing states */}
+                    {processing && (
+                      <div className="flex flex-col items-center gap-3 py-4">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <p className="text-sm font-medium text-foreground">Mejorando imagen con IA...</p>
+                        <p className="text-xs text-muted-foreground">Esto toma unos segundos</p>
+                      </div>
+                    )}
+
+                    {!processing && (
                       <Button
-                        variant="outline"
-                        className="flex-1 gap-2"
-                        onClick={() => setVideoMode(true)}
+                        className="w-full gap-2"
+                        size="lg"
+                        onClick={handleCreateAd}
+                        disabled={processing || !businessName.trim()}
                       >
-                        <Video className="h-4 w-4" />
-                        Crear video animado
+                        <Sparkles className="h-4 w-4" />
+                        Crear anuncio animado con IA
                       </Button>
                     )}
-                  </div>
-                )}
+                  </CardContent>
+                </Card>
+              )}
 
-                {/* Formulario video */}
-                {videoMode && !renderingAdId && (
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium text-foreground">Datos para el video</p>
-                    <Input
-                      value={businessName}
-                      onChange={(e) => setBusinessName(e.target.value)}
-                      placeholder="Nombre del negocio"
-                      className="text-sm"
-                    />
-                    <Input
-                      value={tagline}
-                      onChange={(e) => setTagline(e.target.value)}
-                      placeholder="Tagline (opcional): ej. El mejor corte de la ciudad"
-                      className="text-sm"
-                    />
-                    <Input
-                      value={cta}
-                      onChange={(e) => setCta(e.target.value)}
-                      placeholder="Call to action: ej. Visítanos"
-                      className="text-sm"
-                    />
-                    <Button
-                      className="w-full gap-2"
-                      onClick={handleGenerateVideo}
-                      disabled={generatingVideo || !businessName.trim()}
-                    >
-                      {generatingVideo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
-                      Generar video
-                    </Button>
-                  </div>
-                )}
+              {/* Rendering in progress */}
+              {renderingAdId && !videoReady && (
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex flex-col items-center gap-3 py-4">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                      <p className="text-sm font-medium text-foreground">Generando tu video animado...</p>
+                      <p className="text-xs text-muted-foreground">Esto toma ~2 minutos. Puedes esperar aquí.</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-                {/* Generando... */}
-                {renderingAdId && !(renderingAd as any)?.final_media_path && (
-                  <div className="flex flex-col items-center gap-3 py-4">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">Generando tu video animado...</p>
-                    <p className="text-xs text-muted-foreground">Esto toma ~2 minutos</p>
-                  </div>
-                )}
-
-                {/* Video listo */}
-                {renderingAdId && (renderingAd as any)?.final_media_path && (
-                  <div className="space-y-3">
+              {/* Video ready */}
+              {renderingAdId && videoReady && (
+                <Card className="border-2 border-green-200">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-green-700">
+                      <CheckCircle className="h-4 w-4" />
+                      <p className="text-sm font-medium">¡Tu video está listo!</p>
+                    </div>
                     <video
                       src={(renderingAd as any).final_media_path}
                       controls
                       className="w-full rounded-lg border"
-                      style={{ maxHeight: 200 }}
                     />
-                    <Button
-                      className="w-full gap-2"
-                      onClick={handleSubmitVideo}
-                      disabled={submitting}
-                    >
-                      {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      Enviar a revisión
+                    <Button className="w-full gap-2" onClick={handleSubmitRenderedVideo} disabled={submitting}>
+                      {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</> : <><Send className="h-4 w-4" /> Enviar a revisión</>}
                     </Button>
-                  </div>
-                )}
+                  </CardContent>
+                </Card>
+              )}
 
-                <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={handleReset}>
-                  Cancelar
-                </Button>
-              </>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
