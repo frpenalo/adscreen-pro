@@ -36,10 +36,10 @@ serve(async (req) => {
 
   logStep("Event received", { type: event.type });
 
-  const setActive = async (customerId: string, active: boolean) => {
+  const getAdvertiserByCustomerId = async (customerId: string) => {
     const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
     const email = customer.email;
-    if (!email) { logStep("No email on customer", { customerId }); return; }
+    if (!email) { logStep("No email on customer", { customerId }); return null; }
 
     const { data: profile } = await supabase
       .from("profiles")
@@ -47,15 +47,50 @@ serve(async (req) => {
       .eq("email", email)
       .single();
 
-    if (!profile) { logStep("Profile not found", { email }); return; }
+    if (!profile) { logStep("Profile not found", { email }); return null; }
+
+    const { data: advertiser } = await supabase
+      .from("advertisers")
+      .select("id, referred_partner_id")
+      .eq("id", profile.id)
+      .single();
+
+    return advertiser ?? null;
+  };
+
+  const setActive = async (customerId: string, active: boolean) => {
+    const advertiser = await getAdvertiserByCustomerId(customerId);
+    if (!advertiser) return;
 
     const { error } = await supabase
       .from("advertisers")
       .update({ is_active: active, ...(active ? { activated_at: new Date().toISOString() } : {}) })
-      .eq("id", profile.id);
+      .eq("id", advertiser.id);
 
     if (error) logStep("DB update error", { error: error.message });
-    else logStep(`is_active = ${active}`, { email });
+    else logStep(`is_active = ${active}`, { advertiser_id: advertiser.id });
+  };
+
+  // Record 20% referral commission for the partner when an invoice is paid
+  const recordReferralCommission = async (customerId: string, amountPaid: number) => {
+    const advertiser = await getAdvertiserByCustomerId(customerId);
+    if (!advertiser?.referred_partner_id) return;
+
+    const commission = parseFloat((amountPaid * 0.20).toFixed(2));
+    const month = new Date().toISOString().slice(0, 7) + "-01"; // YYYY-MM-01
+
+    // Upsert to avoid double-counting if webhook fires twice
+    const { error } = await supabase
+      .from("partner_referral_earnings_manual")
+      .upsert({
+        partner_id: advertiser.referred_partner_id,
+        advertiser_id: advertiser.id,
+        month,
+        amount_usd: commission,
+      }, { onConflict: "partner_id,advertiser_id,month" });
+
+    if (error) logStep("Commission insert error", { error: error.message });
+    else logStep("Commission recorded", { partner_id: advertiser.referred_partner_id, commission, month });
   };
 
   switch (event.type) {
@@ -73,7 +108,10 @@ serve(async (req) => {
     }
     case "invoice.paid": {
       const invoice = event.data.object as Stripe.Invoice;
-      if (invoice.customer) await setActive(invoice.customer as string, true);
+      if (!invoice.customer) break;
+      const amountPaid = (invoice.amount_paid ?? 0) / 100; // Stripe sends cents
+      await setActive(invoice.customer as string, true);
+      await recordReferralCommission(invoice.customer as string, amountPaid);
       break;
     }
     case "invoice.payment_failed": {
