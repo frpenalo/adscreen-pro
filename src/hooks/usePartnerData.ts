@@ -87,24 +87,22 @@ export const usePartnerPayouts = () => {
   });
 };
 
-// FASE 2 — Comisiones de productos via GoAffPro
-// Se activa cuando integremos GoAffPro API con AdScreenPro
-// export const usePartnerCommissions = () => {
-//   const { user } = useAuth();
-//   return useQuery({
-//     queryKey: ["partner-commissions", user?.id],
-//     queryFn: async () => {
-//       const { data, error } = await supabase
-//         .from("partner_commissions")
-//         .select("*")
-//         .eq("partner_id", user!.id)
-//         .order("created_at", { ascending: false });
-//       if (error) throw error;
-//       return data;
-//     },
-//     enabled: !!user?.id,
-//   });
-// };
+export const useGoaffproCommissions = () => {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["partner-goaffpro-commissions", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("partner_goaffpro_commissions")
+        .select("*")
+        .eq("partner_id", user!.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user?.id,
+  });
+};
 
 export const useRegisterGoAffPro = () => {
   const queryClient = useQueryClient();

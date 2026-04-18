@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useLang } from "@/contexts/LangContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { usePartnerProfile, usePartnerPayouts, usePartnerEarnings } from "@/hooks/usePartnerData";
-// FASE 2: import { usePartnerCommissions } from "@/hooks/usePartnerData";
+import { usePartnerProfile, usePartnerPayouts, usePartnerEarnings, useGoaffproCommissions } from "@/hooks/usePartnerData";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,8 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Wallet, Clock } from "lucide-react";
-// FASE 2: import { ShoppingBag, TrendingUp } from "lucide-react";
+import { Wallet, Clock, ShoppingBag, Users } from "lucide-react";
 import { toast } from "sonner";
 
 const statusVariant = (s: string): "default" | "secondary" | "destructive" | "outline" => {
@@ -35,17 +33,16 @@ const PayoutsScreen = () => {
   const { data: profile } = usePartnerProfile();
   const { data: payouts } = usePartnerPayouts();
   const { data: earnings } = usePartnerEarnings();
-  // FASE 2: const { data: commissions } = usePartnerCommissions();
+  const { data: goaffproCommissions } = useGoaffproCommissions();
   const queryClient = useQueryClient();
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const isApproved = profile?.status === "approved";
 
-  const totalEarnings = earnings?.reduce((sum, e) => sum + Number(e.amount_usd), 0) ?? 0;
-  // FASE 2: incluir comisiones de productos
-  // const totalProductCommissions = commissions?.reduce((sum, c) => sum + Number(c.commission_amount), 0) ?? 0;
-  // const totalEarnings = totalReferralEarnings + totalProductCommissions;
+  const totalReferralEarnings = earnings?.reduce((sum, e) => sum + Number(e.amount_usd), 0) ?? 0;
+  const totalGoaffproEarnings = goaffproCommissions?.reduce((sum, c) => sum + Number(c.commission_usd), 0) ?? 0;
+  const totalEarnings = totalReferralEarnings + totalGoaffproEarnings;
   const totalPaid = payouts
     ?.filter((p) => p.status === "paid")
     .reduce((sum, p) => sum + Number(p.amount_usd), 0) ?? 0;
@@ -84,6 +81,24 @@ const PayoutsScreen = () => {
             </div>
           </div>
 
+          {/* Earnings breakdown */}
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-lg bg-muted/50 px-3 py-2.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">Referidos AdScreenPro</p>
+              </div>
+              <p className="text-base font-bold text-foreground">${totalReferralEarnings.toFixed(2)}</p>
+            </div>
+            <div className="rounded-lg bg-muted/50 px-3 py-2.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <ShoppingBag className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">Ventas de productos</p>
+              </div>
+              <p className="text-base font-bold text-foreground">${totalGoaffproEarnings.toFixed(2)}</p>
+            </div>
+          </div>
+
           <div className="mt-5">
             {!isApproved ? (
               <Tooltip>
@@ -107,7 +122,30 @@ const PayoutsScreen = () => {
         </CardContent>
       </Card>
 
-      {/* FASE 2: desglose de ganancias (referidos + productos GoAffPro) */}
+      {/* GoAffPro product commissions history */}
+      {goaffproCommissions && goaffproCommissions.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">Comisiones de productos ({goaffproCommissions.length})</h3>
+          </div>
+          <div className="space-y-2">
+            {goaffproCommissions.map((c: any) => (
+              <Card key={c.id}>
+                <CardContent className="p-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Orden #{c.order_id}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Venta: ${Number(c.order_total_usd).toFixed(2)} · {new Date(c.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <p className="font-semibold text-foreground">+${Number(c.commission_usd).toFixed(2)}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Payout history */}
       <div>
