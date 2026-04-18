@@ -36,6 +36,7 @@ const Register = () => {
   const [addressLng, setAddressLng] = useState<number | undefined>();
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [tvOwner, setTvOwner] = useState<"partner" | "adscreenpro">("partner");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +60,7 @@ const Register = () => {
         metadata.contact_name = contactName;
         metadata.contact_email = email;
         metadata.contact_phone = contactPhone;
+        metadata.tv_owner = tvOwner;
       }
 
       const { error } = await supabase.auth.signUp({
@@ -156,6 +158,28 @@ const Register = () => {
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">{t.auth.contactPhone}</label>
                 <input className={inputClass} value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">¿Tienes pantalla o TV propia para mostrar los anuncios?</label>
+                <div className="flex gap-3 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setTvOwner("partner")}
+                    className={`flex-1 rounded-lg border py-3 text-sm font-medium transition-colors ${tvOwner === "partner" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:border-primary/50"}`}
+                  >
+                    ✅ Sí, tengo pantalla
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTvOwner("adscreenpro")}
+                    className={`flex-1 rounded-lg border py-3 text-sm font-medium transition-colors ${tvOwner === "adscreenpro" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:border-primary/50"}`}
+                  >
+                    📺 No, necesito una
+                  </button>
+                </div>
+                {tvOwner === "adscreenpro" && (
+                  <p className="mt-2 text-xs text-muted-foreground">AdScreenPro te proveerá la pantalla sin costo. Los detalles están en el contrato.</p>
+                )}
               </div>
             </>
           )}

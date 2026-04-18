@@ -24,6 +24,7 @@ const PartnerDashboard = () => {
         name={profile.contact_name ?? ""}
         business={profile.business_name ?? ""}
         email={user?.email ?? ""}
+        tvOwner={(profile as any).tv_owner === "adscreenpro" ? "adscreenpro" : "partner"}
         onAccepted={() => {}}
       />
     );
