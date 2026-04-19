@@ -10,8 +10,10 @@
  * 3. Inserta 1 ad por partner aprobado con su QR de afiliado GoAffPro
  * 4. Actualiza products.published_count
  *
- * El QR apunta a https://regalove.co/products/{handle}?ref={partner_ref_code}
- * de modo que GoAffPro acredita la compra al partner dueño de la pantalla.
+ * El QR apunta a https://adscreenpro.com/r/{ad_id}/{partner_id} para que
+ * cada escaneo quede registrado en ad_clicks antes de redirigir a
+ * regalove.co/products/{handle}?ref={partner_ref_code}, donde GoAffPro
+ * acredita la compra al partner dueño de la pantalla.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -177,24 +179,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // 4. Build one ad per partner with their individual affiliate QR
+  //    We pre-generate the ad id so the QR can point to our trackable
+  //    redirect route /r/:adId/:screenId which logs ad_clicks before
+  //    forwarding to GoAffPro-tagged Regalove URL.
   const adRows = (partners as Partner[]).flatMap((partner) => {
     const refCode = extractRefCode(partner.goaffpro_referral_link);
     if (!refCode) return [];
 
-    const affiliateUrl = `https://regalove.co/products/${product.shopify_handle}?ref=${refCode}`;
+    const adId = crypto.randomUUID();
+    const trackableUrl = `https://adscreenpro.com/r/${adId}/${partner.id}`;
 
     return [{
+      id: adId,
       advertiser_id: null,
       type: product.media_type, // 'image' or 'video'
       status: "published",
       final_media_path: product.media_url,
-      qr_url: affiliateUrl,
+      qr_url: trackableUrl,
       screen_id: partner.id,
       metadata: {
         product_id: product.id,
         shopify_handle: product.shopify_handle,
         title: product.title,
         price: String(product.price),
+        ref_code: refCode,
       },
     }];
   });
