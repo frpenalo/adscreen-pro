@@ -28,13 +28,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  // Verify the user's JWT
+  // Verify the user's JWT using service role key (supports ES256)
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
   });
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const token = authHeader.replace("Bearer ", "").trim();
+  const { data: { user }, error: authError } = await adminClient.auth.getUser(token);
   if (authError || !user) {
     return new Response(
       JSON.stringify({ error: "Unauthorized" }),
