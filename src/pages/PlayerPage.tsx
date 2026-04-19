@@ -206,7 +206,10 @@ export default function PlayerPage() {
 
   const fetchAds = useCallback(async () => {
     try {
-      // Query 1: general ads (screen_id IS NULL)
+      // Query 1: general ads (screen_id IS NULL).
+      // By definition these are NOT tied to any specific partner, so we
+      // strip any qr_url they may carry — only per-screen ads (query 2)
+      // are allowed to render a partner QR overlay.
       const { data: generalAds, error: err1 } = await supabase
         .from("ads")
         .select("id, type, final_media_path, qr_url, metadata")
@@ -227,14 +230,21 @@ export default function PlayerPage() {
         if (!err2) localAds = local ?? [];
       }
 
-      const merged = [...(generalAds ?? []), ...localAds];
-      const list: Ad[] = merged.map((row: any) => ({
+      const generalList: Ad[] = (generalAds ?? []).map((row: any) => ({
+        id: row.id,
+        type: row.type,
+        final_media_path: row.final_media_path,
+        qr_url: null, // never render a partner QR on a non-scoped ad
+        metadata: row.metadata ?? null,
+      }));
+      const localList: Ad[] = localAds.map((row: any) => ({
         id: row.id,
         type: row.type,
         final_media_path: row.final_media_path,
         qr_url: row.qr_url ?? null,
         metadata: row.metadata ?? null,
       }));
+      const list: Ad[] = [...generalList, ...localList];
       setAds(list);
       saveCache(screenId, list);
       setLoaded(true);
