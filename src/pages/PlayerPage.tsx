@@ -2,7 +2,6 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { QRCodeSVG } from "qrcode.react";
-import ProductAdSlide from "@/components/player/ProductAdSlide";
 import ClockWidget from "@/components/player/ClockWidget";
 import WeatherWidget from "@/components/player/WeatherWidget";
 import JokeWidget from "@/components/player/JokeWidget";
@@ -11,7 +10,7 @@ import NewsWidget from "@/components/player/NewsWidget";
 
 interface Ad {
   id: string;
-  type: "image" | "video" | "product";
+  type: "image" | "video";
   final_media_path: string;
   qr_url?: string | null;
   metadata?: any;
@@ -178,7 +177,7 @@ export default function PlayerPage() {
   useEffect(() => {
     if (!loaded || ads.length === 0 || activeWidget) return;
     const ad = ads[current];
-    if (ad?.type === "image" || ad?.type === "product") {
+    if (ad?.type === "image") {
       clearImageTimer();
       imageTimerRef.current = setTimeout(next, IMAGE_DURATION);
     }
@@ -286,14 +285,7 @@ export default function PlayerPage() {
           className="absolute inset-0 transition-opacity duration-300"
           style={{ opacity, zIndex: zIdx }}
         >
-          {ad.type === "product" ? (
-            <ProductAdSlide
-              imageUrl={ad.metadata?.image_url ?? null}
-              title={ad.metadata?.title ?? ""}
-              price={ad.metadata?.price ?? "0.00"}
-              qrUrl={ad.qr_url ?? ""}
-            />
-          ) : ad.type === "image" ? (
+          {ad.type === "image" ? (
             <img src={ad.final_media_path} alt="" className="w-full h-full object-contain" draggable={false} />
           ) : (
             <video
@@ -307,8 +299,8 @@ export default function PlayerPage() {
             />
           )}
 
-          {/* QR code overlay — only for image ads */}
-          {ad.type === "image" && ad.qr_url && (
+          {/* QR code overlay — works for both image and video ads when qr_url is set */}
+          {ad.qr_url && (
             <div className="absolute bottom-8 right-8 z-10 bg-white p-2 rounded-lg shadow-lg">
               <QRCodeSVG
                 value={ad.qr_url}
