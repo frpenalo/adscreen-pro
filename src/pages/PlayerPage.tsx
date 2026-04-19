@@ -101,6 +101,99 @@ function OfflineScreen() {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── AdFrame ───────────────────────────────────────────────────────────────────
+// Renders a single ad (image or video) and, if the ad has a qr_url, overlays
+// the QR INSIDE the content's bounding box — not the viewport. This keeps the
+// QR anchored to the bottom-right of the media itself so designs with
+// "escanea aquí" arrows pointing to a specific spot still line up even if the
+// media aspect ratio doesn't match the screen (letterbox/pillarbox case).
+interface AdFrameProps {
+  ad: Ad;
+  videoRef?: React.MutableRefObject<HTMLVideoElement | null>;
+  onVideoEnded: () => void;
+  onVideoError: () => void;
+}
+
+function AdFrame({ ad, videoRef, onVideoEnded, onVideoError }: AdFrameProps) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
+  const [box, setBox] = useState<{ width: number; height: number; left: number; top: number } | null>(null);
+
+  const compute = useCallback(() => {
+    const wrap = wrapperRef.current;
+    const media = mediaRef.current;
+    if (!wrap || !media) return;
+    const cw = wrap.clientWidth;
+    const ch = wrap.clientHeight;
+    // Natural media dimensions
+    const nw = (media as HTMLImageElement).naturalWidth || (media as HTMLVideoElement).videoWidth || 0;
+    const nh = (media as HTMLImageElement).naturalHeight || (media as HTMLVideoElement).videoHeight || 0;
+    if (!nw || !nh || !cw || !ch) return;
+    // object-contain: fit into wrapper while preserving aspect
+    const scale = Math.min(cw / nw, ch / nh);
+    const w = nw * scale;
+    const h = nh * scale;
+    const left = (cw - w) / 2;
+    const top = (ch - h) / 2;
+    setBox({ width: w, height: h, left, top });
+  }, []);
+
+  useEffect(() => {
+    compute();
+    const ro = new ResizeObserver(compute);
+    if (wrapperRef.current) ro.observe(wrapperRef.current);
+    return () => ro.disconnect();
+  }, [compute, ad.id]);
+
+  // QR size: ~10% of the media's shorter dimension, clamped.
+  const qrSize = box ? Math.max(80, Math.min(220, Math.min(box.width, box.height) * 0.12)) : 120;
+  const padding = box ? Math.max(12, Math.min(box.width, box.height) * 0.025) : 16;
+
+  return (
+    <div ref={wrapperRef} className="relative w-full h-full">
+      {ad.type === "image" ? (
+        <img
+          ref={(el) => { mediaRef.current = el; }}
+          src={ad.final_media_path}
+          alt=""
+          className="w-full h-full object-contain"
+          draggable={false}
+          onLoad={compute}
+        />
+      ) : (
+        <video
+          ref={(el) => {
+            mediaRef.current = el;
+            if (videoRef) videoRef.current = el;
+          }}
+          src={ad.final_media_path}
+          className="w-full h-full object-contain"
+          preload="auto"
+          muted
+          playsInline
+          onEnded={onVideoEnded}
+          onError={onVideoError}
+          onLoadedMetadata={compute}
+        />
+      )}
+
+      {ad.qr_url && box && (
+        <div
+          className="absolute bg-white rounded-lg shadow-lg"
+          style={{
+            left: box.left + box.width - qrSize - padding * 2,
+            top: box.top + box.height - qrSize - padding * 2,
+            padding,
+            zIndex: 10,
+          }}
+        >
+          <QRCodeSVG value={ad.qr_url} size={qrSize} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PlayerPage() {
   const { screenId } = useParams<{ screenId?: string }>();
   const [ads, setAds] = useState<Ad[]>(() => loadCache(screenId));
@@ -306,29 +399,12 @@ export default function PlayerPage() {
           className="absolute inset-0 transition-opacity duration-300"
           style={{ opacity, zIndex: zIdx }}
         >
-          {ad.type === "image" ? (
-            <img src={ad.final_media_path} alt="" className="w-full h-full object-contain" draggable={false} />
-          ) : (
-            <video
-              ref={index === current ? videoRef : undefined}
-              src={ad.final_media_path}
-              className="w-full h-full object-contain"
-              preload="auto"
-              muted playsInline
-              onEnded={next}
-              onError={next}
-            />
-          )}
-
-          {/* QR code overlay — works for both image and video ads when qr_url is set */}
-          {ad.qr_url && (
-            <div className="absolute bottom-8 right-8 z-10 bg-white p-2 rounded-lg shadow-lg">
-              <QRCodeSVG
-                value={ad.qr_url}
-                size={80}
-              />
-            </div>
-          )}
+          <AdFrame
+            ad={ad}
+            videoRef={index === current ? videoRef : undefined}
+            onVideoEnded={next}
+            onVideoError={next}
+          />
         </div>
         );
       })}
