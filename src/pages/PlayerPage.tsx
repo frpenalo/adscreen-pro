@@ -22,12 +22,23 @@ const WIDGET_DURATION = 10000;
 const IMAGE_DURATION = 10000;
 const DEFAULT_WIDGET_FREQUENCY = 3;
 
-const CACHE_KEY = "adscreenpro-player-cache";
-const loadCache = (): Ad[] => {
-  try { return JSON.parse(localStorage.getItem(CACHE_KEY) ?? "[]"); } catch { return []; }
+// Cache key is per-screen to prevent bleed-over between partner TVs
+// (e.g. QRs from a previously-viewed partner showing on a new panel).
+const LEGACY_GLOBAL_CACHE_KEY = "adscreenpro-player-cache";
+const cacheKeyFor = (screenId: string | undefined) =>
+  `adscreenpro-player-cache:${screenId ?? "global"}`;
+
+const loadCache = (screenId: string | undefined): Ad[] => {
+  try {
+    // One-time purge of the old global cache key (pre-fix).
+    if (localStorage.getItem(LEGACY_GLOBAL_CACHE_KEY)) {
+      localStorage.removeItem(LEGACY_GLOBAL_CACHE_KEY);
+    }
+    return JSON.parse(localStorage.getItem(cacheKeyFor(screenId)) ?? "[]");
+  } catch { return []; }
 };
-const saveCache = (ads: Ad[]) => {
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify(ads)); } catch {}
+const saveCache = (screenId: string | undefined, ads: Ad[]) => {
+  try { localStorage.setItem(cacheKeyFor(screenId), JSON.stringify(ads)); } catch {}
 };
 
 // ── Offline emergency screen ──────────────────────────────────────────────────
@@ -92,7 +103,7 @@ function OfflineScreen() {
 
 export default function PlayerPage() {
   const { screenId } = useParams<{ screenId?: string }>();
-  const [ads, setAds] = useState<Ad[]>(loadCache);
+  const [ads, setAds] = useState<Ad[]>(() => loadCache(screenId));
   const [current, setCurrent] = useState(0);
   const [prev, setPrev] = useState<number | null>(null); // crossfade: keeps old content visible
   const [loaded, setLoaded] = useState(false);
@@ -225,7 +236,7 @@ export default function PlayerPage() {
         metadata: row.metadata ?? null,
       }));
       setAds(list);
-      saveCache(list);
+      saveCache(screenId, list);
       setLoaded(true);
     } catch {
       setLoaded(true);
