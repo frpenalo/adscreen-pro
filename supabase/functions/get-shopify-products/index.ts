@@ -19,33 +19,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
-  // Require authentication
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return new Response(
-      JSON.stringify({ error: "Missing or invalid Authorization header" }),
-      { status: 401, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
-    );
-  }
-
-  // Verify the user's JWT using service role key (supports ES256)
+  // Supabase validates the apikey/JWT automatically before the request reaches here.
+  // We just need the service role client for DB operations.
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const token = authHeader.replace("Bearer ", "").trim();
-  const { data: { user }, error: authError } = await adminClient.auth.getUser(token);
-  if (authError || !user) {
-    return new Response(
-      JSON.stringify({ error: "Unauthorized" }),
-      { status: 401, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
-    );
-  }
 
   // Shopify Storefront API credentials
-  const shopifyDomain      = Deno.env.get("SHOPIFY_STORE_DOMAIN");
-  const storefrontToken    = Deno.env.get("SHOPIFY_STOREFRONT_TOKEN");
+  const shopifyDomain   = Deno.env.get("SHOPIFY_STORE_DOMAIN");
+  const storefrontToken = Deno.env.get("SHOPIFY_STOREFRONT_TOKEN");
 
   if (!shopifyDomain || !storefrontToken) {
     return new Response(
@@ -54,7 +39,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  // Use Storefront API (GraphQL) to fetch products
+  // Storefront API GraphQL query
   const query = `{
     products(first: 250, query: "status:active") {
       edges {
@@ -112,7 +97,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const products: NormalizedProduct[] = edges.map((edge: any) => {
     const node = edge.node;
-    // Storefront API returns gid://shopify/Product/123456 — extract numeric ID
     const numericId = node.id.split("/").pop() ?? node.id;
     return {
       id: numericId,
@@ -122,6 +106,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       price: node.priceRange?.minVariantPrice?.amount ?? "0.00",
     };
   });
+
+  console.log(`Returning ${products.length} products`);
 
   return new Response(
     JSON.stringify({ products }),
