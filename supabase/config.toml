@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.publish-product-ad]
 verify_jwt = false
+
+[functions.get-shopify-products]
+verify_jwt = false

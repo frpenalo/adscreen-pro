@@ -8,6 +8,7 @@ import {
   Trash2,
   Plus,
   CheckCircle2,
+  ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +34,14 @@ interface Product {
   created_at: string;
 }
 
+interface ShopifyProduct {
+  id: string;
+  title: string;
+  handle: string;
+  price: string;
+  image_url: string | null;
+}
+
 export default function ProductsScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,10 +50,12 @@ export default function ProductsScreen() {
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Form state
-  const [title, setTitle] = useState("");
-  const [price, setPrice] = useState("");
-  const [shopifyHandle, setShopifyHandle] = useState("");
+  // Dialog steps: 1 = pick from Shopify, 2 = upload creative + confirm
+  const [step, setStep] = useState<1 | 2>(1);
+  const [shopifyProducts, setShopifyProducts] = useState<ShopifyProduct[]>([]);
+  const [shopifyLoading, setShopifyLoading] = useState(false);
+  const [shopifyError, setShopifyError] = useState<string | null>(null);
+  const [selectedShopify, setSelectedShopify] = useState<ShopifyProduct | null>(null);
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -66,17 +77,55 @@ export default function ProductsScreen() {
     fetchProducts();
   }, [fetchProducts]);
 
-  const resetForm = () => {
-    setTitle("");
-    setPrice("");
-    setShopifyHandle("");
+  const fetchShopifyProducts = useCallback(async () => {
+    setShopifyLoading(true);
+    setShopifyError(null);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error("No authenticated session");
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const res = await fetch(`${supabaseUrl}/functions/v1/get-shopify-products`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string,
+        },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Error ${res.status}`);
+      }
+      const json = await res.json();
+      setShopifyProducts((json.products ?? []) as ShopifyProduct[]);
+    } catch (e: any) {
+      setShopifyError(e.message ?? "Error al cargar productos de Shopify");
+    } finally {
+      setShopifyLoading(false);
+    }
+  }, []);
+
+  const openDialog = () => {
+    setStep(1);
+    setSelectedShopify(null);
+    setMediaFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setDialogOpen(true);
+    fetchShopifyProducts();
+  };
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setStep(1);
+    setSelectedShopify(null);
     setMediaFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleCreate = async () => {
-    if (!title || !price || !shopifyHandle || !mediaFile) {
-      toast.error("Completa todos los campos y sube una imagen o video");
+    if (!selectedShopify || !mediaFile) {
+      toast.error("Selecciona un producto de Shopify y sube tu creatividad");
       return;
     }
 
@@ -89,7 +138,6 @@ export default function ProductsScreen() {
 
     setSaving(true);
     try {
-      // 1. Upload media
       const path = `products/${Date.now()}-${mediaFile.name.replace(/\s/g, "_")}`;
       const { error: uploadErr } = await supabase.storage
         .from("ad-media")
@@ -98,19 +146,17 @@ export default function ProductsScreen() {
 
       const { data: urlData } = supabase.storage.from("ad-media").getPublicUrl(path);
 
-      // 2. Insert product row
       const { error: insertErr } = await supabase.from("products" as any).insert({
-        title,
-        price: parseFloat(price),
-        shopify_handle: shopifyHandle.trim(),
+        title: selectedShopify.title,
+        price: parseFloat(selectedShopify.price),
+        shopify_handle: selectedShopify.handle,
         media_url: urlData.publicUrl,
         media_type: isImage ? "image" : "video",
       });
       if (insertErr) throw insertErr;
 
       toast.success("Producto creado");
-      resetForm();
-      setDialogOpen(false);
+      closeDialog();
       fetchProducts();
     } catch (e: any) {
       toast.error(e.message);
@@ -200,18 +246,15 @@ export default function ProductsScreen() {
     if (!confirm(`¿Eliminar "${product.title}"? Esta acción despublica y borra todo.`)) return;
     setDeletingId(product.id);
     try {
-      // Unpublish first (removes ads rows)
       if (product.published_count > 0) {
         await handleUnpublish(product);
       }
 
-      // Remove media from storage
       const mediaPath = product.media_url.split("/ad-media/")[1];
       if (mediaPath) {
         await supabase.storage.from("ad-media").remove([mediaPath]);
       }
 
-      // Delete product row
       const { error } = await supabase.from("products" as any).delete().eq("id", product.id);
       if (error) throw error;
 
@@ -224,6 +267,11 @@ export default function ProductsScreen() {
     }
   };
 
+  // Filter out Shopify products already created locally so the admin doesn't
+  // duplicate them by accident.
+  const existingHandles = new Set(products.map((p) => p.shopify_handle));
+  const availableShopify = shopifyProducts.filter((sp) => !existingHandles.has(sp.handle));
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -234,10 +282,10 @@ export default function ProductsScreen() {
             Productos
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Sube tu creatividad (imagen o video) por producto. El sistema la publica en las pantallas de todos los partners con su QR de afiliado GoAffPro.
+            Elige un producto de Shopify, sube tu creatividad (imagen o video) y publícalo en las pantallas. Cada partner recibe su QR de afiliado GoAffPro.
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)} className="gap-2">
+        <Button onClick={openDialog} className="gap-2">
           <Plus className="h-4 w-4" />
           Nuevo producto
         </Button>
@@ -260,7 +308,6 @@ export default function ProductsScreen() {
               key={product.id}
               className="flex items-center gap-4 bg-card border border-border rounded-lg p-4"
             >
-              {/* Thumbnail */}
               <div className="flex-shrink-0">
                 {product.media_type === "video" ? (
                   <video
@@ -280,7 +327,6 @@ export default function ProductsScreen() {
                 )}
               </div>
 
-              {/* Info */}
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-foreground truncate">{product.title}</p>
                 <p className="text-sm text-muted-foreground mt-0.5">
@@ -291,7 +337,6 @@ export default function ProductsScreen() {
                 </p>
               </div>
 
-              {/* Actions */}
               <div className="flex-shrink-0 flex items-center gap-3">
                 {product.published_count > 0 ? (
                   <>
@@ -350,80 +395,160 @@ export default function ProductsScreen() {
       )}
 
       {/* Create dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Nuevo producto</DialogTitle>
-            <DialogDescription>
-              Sube la creatividad (imagen o video). Deja el espacio inferior derecho libre — el sistema superpone el QR de afiliado de cada partner ahí.
-            </DialogDescription>
-          </DialogHeader>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>
+        <DialogContent className="max-w-2xl">
+          {step === 1 ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Elegir producto de Shopify</DialogTitle>
+                <DialogDescription>
+                  Selecciona el producto que quieres anunciar. El título, precio y handle se autocompletan.
+                </DialogDescription>
+              </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Título</Label>
-              <Input
-                id="title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Dominican Pride Tee"
-              />
-            </div>
+              {shopifyLoading ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <p className="text-sm">Cargando productos de Shopify...</p>
+                </div>
+              ) : shopifyError ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3 text-destructive">
+                  <p className="text-sm text-center">{shopifyError}</p>
+                  <Button variant="outline" size="sm" onClick={fetchShopifyProducts}>
+                    Reintentar
+                  </Button>
+                </div>
+              ) : availableShopify.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+                  <ShoppingBag className="h-8 w-8 opacity-30" />
+                  <p className="text-sm text-center">
+                    {shopifyProducts.length === 0
+                      ? "No se encontraron productos activos en Shopify."
+                      : "Ya creaste anuncios para todos los productos de Shopify."}
+                  </p>
+                </div>
+              ) : (
+                <div className="max-h-[50vh] overflow-y-auto space-y-2 -mx-1 px-1">
+                  {availableShopify.map((sp) => (
+                    <button
+                      key={sp.id}
+                      onClick={() => {
+                        setSelectedShopify(sp);
+                        setStep(2);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary hover:bg-accent/50 transition-colors text-left"
+                    >
+                      {sp.image_url ? (
+                        <img
+                          src={sp.image_url}
+                          alt={sp.title}
+                          className="rounded object-cover flex-shrink-0"
+                          style={{ width: 56, height: 56 }}
+                        />
+                      ) : (
+                        <div
+                          className="rounded bg-muted flex items-center justify-center flex-shrink-0"
+                          style={{ width: 56, height: 56 }}
+                        >
+                          <ShoppingBag className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{sp.title}</p>
+                        <p className="text-sm text-muted-foreground">
+                          ${parseFloat(sp.price).toFixed(2)}
+                        </p>
+                        <p className="text-xs text-muted-foreground/60 font-mono truncate">
+                          /{sp.handle}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
 
-            <div className="grid grid-cols-2 gap-3">
+              <DialogFooter>
+                <Button variant="outline" onClick={closeDialog}>
+                  Cancelar
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <button
+                    onClick={() => setStep(1)}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Volver"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  Subir creatividad
+                </DialogTitle>
+                <DialogDescription>
+                  Sube la imagen o video publicitario. Deja el espacio inferior derecho libre — el sistema superpone el QR de afiliado de cada partner ahí.
+                </DialogDescription>
+              </DialogHeader>
+
+              {selectedShopify && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border">
+                  {selectedShopify.image_url ? (
+                    <img
+                      src={selectedShopify.image_url}
+                      alt={selectedShopify.title}
+                      className="rounded object-cover"
+                      style={{ width: 48, height: 48 }}
+                    />
+                  ) : (
+                    <div
+                      className="rounded bg-muted flex items-center justify-center"
+                      style={{ width: 48, height: 48 }}
+                    >
+                      <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{selectedShopify.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      ${parseFloat(selectedShopify.price).toFixed(2)} · /{selectedShopify.handle}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Label htmlFor="price">Precio (USD)</Label>
-                <Input
-                  id="price"
-                  type="number"
-                  step="0.01"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="24.99"
-                />
+                <Label>Imagen o video publicitario</Label>
+                <label className="flex items-center justify-center gap-2 w-full h-14 px-4 rounded-md border-2 border-dashed border-border text-sm font-medium cursor-pointer hover:border-primary hover:text-primary transition-colors">
+                  <Upload className="h-4 w-4" />
+                  {mediaFile ? mediaFile.name : "Subir imagen o video"}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setMediaFile(f);
+                    }}
+                  />
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Recomendado: 1920×1080 (16:9). Deja ~120×120px libres abajo a la derecha para el QR.
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="handle">Shopify handle</Label>
-                <Input
-                  id="handle"
-                  value={shopifyHandle}
-                  onChange={(e) => setShopifyHandle(e.target.value)}
-                  placeholder="dominican-pride-tee"
-                />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground -mt-1">
-              El handle es la última parte de la URL del producto en Shopify: <code>regalove.co/products/<b>dominican-pride-tee</b></code>
-            </p>
 
-            <div className="space-y-2">
-              <Label>Imagen o video</Label>
-              <label className="flex items-center justify-center gap-2 w-full h-12 px-4 rounded-md border-2 border-dashed border-border text-sm font-medium cursor-pointer hover:border-primary hover:text-primary transition-colors">
-                <Upload className="h-4 w-4" />
-                {mediaFile ? mediaFile.name : "Subir imagen o video"}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,video/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) setMediaFile(f);
-                  }}
-                />
-              </label>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }} disabled={saving}>
-              Cancelar
-            </Button>
-            <Button onClick={handleCreate} disabled={saving} className="gap-2">
-              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Crear
-            </Button>
-          </DialogFooter>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setStep(1)} disabled={saving}>
+                  Atrás
+                </Button>
+                <Button onClick={handleCreate} disabled={saving || !mediaFile} className="gap-2">
+                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Crear
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
