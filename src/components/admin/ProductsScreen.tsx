@@ -100,7 +100,14 @@ export default function ProductsScreen() {
           Authorization: `Bearer ${token}`,
           apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string,
         },
-        body: JSON.stringify({ ...product, action: "publish" }),
+        body: JSON.stringify({
+          shopify_product_id: String(product.id),
+          title: product.title,
+          handle: product.handle,
+          image_url: product.image_url,
+          price: product.price,
+          action: "publish",
+        }),
       });
 
       if (!res.ok) {
@@ -109,7 +116,7 @@ export default function ProductsScreen() {
       }
 
       const json = await res.json();
-      const count: number = json.screens ?? json.count ?? 0;
+      const count: number = json.published_to ?? 0;
 
       toast.success(`Publicado en ${count} pantallas`, { id: `publish-${product.id}` });
 
@@ -146,7 +153,10 @@ export default function ProductsScreen() {
           Authorization: `Bearer ${token}`,
           apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string,
         },
-        body: JSON.stringify({ ...product, action: "unpublish" }),
+        body: JSON.stringify({
+          shopify_product_id: String(product.id),
+          action: "unpublish",
+        }),
       });
 
       if (!res.ok) {
