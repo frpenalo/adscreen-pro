@@ -1,4 +1,4 @@
-const CACHE = "adscreenpro-player-v1";
+const CACHE = "adscreenpro-player-v2";
 
 const EMERGENCY_JOKES = [
   { setup: "¿Por qué los pájaros vuelan hacia el sur en invierno?", delivery: "¡Porque caminar sería demasiado lejos!" },
@@ -55,17 +55,19 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // JS / CSS / fonts — cache first
+  // JS / CSS / fonts — network first, fall back to cache.
+  // Using network-first prevents stale bundles from being served after a
+  // new deploy. The cache is only a backup for offline kiosks.
   if (/\.(js|css|woff2?)$/.test(url.pathname)) {
     e.respondWith(
-      caches.match(e.request).then(
-        (cached) =>
-          cached ||
-          fetch(e.request).then((res) => {
+      fetch(e.request)
+        .then((res) => {
+          if (res.ok) {
             caches.open(CACHE).then((c) => c.put(e.request, res.clone()));
-            return res;
-          })
-      )
+          }
+          return res;
+        })
+        .catch(() => caches.match(e.request))
     );
     return;
   }
