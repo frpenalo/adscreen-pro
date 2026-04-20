@@ -89,8 +89,7 @@ const FleetHealthScreen = () => {
     const partnerIds = partners.map((p) => p.id);
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    // Pull all ad_logs in last 24h for these screens.
-    // The RLS policy "admin sees all logs" grants access.
+    // ad_logs counts impressions last 24h (still useful metric)
     const { data: logs, error } = await supabase
       .from("ad_logs")
       .select("location_id, created_at")
@@ -103,18 +102,24 @@ const FleetHealthScreen = () => {
       return;
     }
 
-    const lastSeenMap = new Map<string, Date>();
     const countMap = new Map<string, number>();
+    const impressionsLastSeenMap = new Map<string, Date>();
     for (const row of logs ?? []) {
       const locationId = row.location_id as string;
       const ts = new Date(row.created_at);
       countMap.set(locationId, (countMap.get(locationId) ?? 0) + 1);
-      const prev = lastSeenMap.get(locationId);
-      if (!prev || ts > prev) lastSeenMap.set(locationId, ts);
+      const prev = impressionsLastSeenMap.get(locationId);
+      if (!prev || ts > prev) impressionsLastSeenMap.set(locationId, ts);
     }
 
+    // Prefer partners.last_seen_at (explicit heartbeat every 60s)
+    // Fallback to latest ad_log timestamp so old data is not lost.
     const result: ScreenHealth[] = partners.map((p) => {
-      const lastSeen = lastSeenMap.get(p.id) ?? null;
+      const heartbeat = (p as any).last_seen_at ? new Date((p as any).last_seen_at) : null;
+      const impressionLast = impressionsLastSeenMap.get(p.id) ?? null;
+      const lastSeen = heartbeat && impressionLast
+        ? (heartbeat > impressionLast ? heartbeat : impressionLast)
+        : heartbeat ?? impressionLast;
       return {
         id: p.id,
         business_name: p.business_name,

@@ -223,6 +223,20 @@ export default function PlayerPage() {
     };
   }, []);
 
+  // Explicit heartbeat — ping backend every 60s so Fleet Health can
+  // distinguish "TV on, no ads" from "TV off". Independent from
+  // ad_logs which only fire when there are ads to play.
+  useEffect(() => {
+    if (!screenId) return;
+    const ping = () => {
+      if (!navigator.onLine) return;
+      supabase.rpc("ping_screen", { screen_id: screenId });
+    };
+    ping(); // immediate on mount
+    const interval = setInterval(ping, 60_000);
+    return () => clearInterval(interval);
+  }, [screenId]);
+
   const clearImageTimer = () => {
     if (imageTimerRef.current) clearTimeout(imageTimerRef.current);
   };
