@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 
 // Latino-relevant team IDs per sport
 const MLB_PRIORITY = new Set(["10","19","21","18","16","24","2","28","22","27"]);
@@ -248,32 +248,54 @@ function GameCardView({ game }: { game: GameCard }) {
   );
 }
 
+// ── Module-level state ──────────────────────────────────────────────────────
+// PlayerPage mounts SportsWidget for ~10s then unmounts it. If we kept slide
+// index in component state, every mount would reset to 0 (always Liga MX #1).
+// Persisting across mounts at module scope so each appearance advances to the
+// next game in the round-robin rotation.
+let slidesCache: Slide[] = [];
+let slidesCacheTime = 0;
+const SLIDES_TTL = 5 * 60 * 1000; // 5 minutes
+let globalSlideIndex = 0;
+let fetchInFlight: Promise<Slide[]> | null = null;
+
+async function getSlides(): Promise<Slide[]> {
+  const fresh = Date.now() - slidesCacheTime < SLIDES_TTL && slidesCache.length > 0;
+  if (fresh) return slidesCache;
+  if (fetchInFlight) return fetchInFlight;
+  fetchInFlight = buildSlides().then((s) => {
+    slidesCache = s;
+    slidesCacheTime = Date.now();
+    fetchInFlight = null;
+    return s;
+  });
+  return fetchInFlight;
+}
+
 // ── Main widget ─────────────────────────────────────────────────────────────
 export default function SportsWidget() {
-  const [slides, setSlides] = useState<Slide[]>([]);
+  const [slides, setSlides] = useState<Slide[]>(slidesCache);
   const [current, setCurrent] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(slidesCache.length === 0);
 
-  const load = useCallback(() => {
-    buildSlides().then((s) => {
+  // On mount: pick the next slide in global rotation, then fetch fresh if stale
+  useEffect(() => {
+    let cancelled = false;
+
+    getSlides().then((s) => {
+      if (cancelled) return;
       setSlides(s);
       setLoading(false);
+      if (s.length > 0) {
+        // Advance global index so next mount shows the next game
+        const idx = globalSlideIndex % s.length;
+        globalSlideIndex = (globalSlideIndex + 1) % s.length;
+        setCurrent(idx);
+      }
     });
+
+    return () => { cancelled = true; };
   }, []);
-
-  // Initial load + refresh every 5 min
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 5 * 60 * 1000);
-    return () => clearInterval(id);
-  }, [load]);
-
-  // Rotate every 12 seconds
-  useEffect(() => {
-    if (slides.length <= 1) return;
-    const id = setInterval(() => setCurrent((p) => (p + 1) % slides.length), 12000);
-    return () => clearInterval(id);
-  }, [slides]);
 
   const slide = slides[current];
 
