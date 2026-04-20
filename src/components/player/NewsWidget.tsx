@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 interface NewsItem {
   title: string;
   pubDate: string;
+  source?: string;
 }
 
 let newsCache: NewsItem[] = [];
@@ -13,7 +14,7 @@ async function fetchNews(): Promise<NewsItem[]> {
   if (newsCache.length > 0 && Date.now() - cacheTime < CACHE_TTL) return newsCache;
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  const res = await fetch(`${supabaseUrl}/functions/v1/fetch-news`, {
+  const res = await fetch(`${supabaseUrl}/functions/v1/fetch-news?lang=es`, {
     headers: { "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
   });
   if (!res.ok) throw new Error("fetch-news failed");
@@ -59,10 +60,10 @@ export default function NewsWidget() {
         <span style={{ fontSize: "3.5vw" }}>📰</span>
         <div>
           <div className="text-white font-semibold tracking-widest uppercase" style={{ fontSize: "1.8vw" }}>
-            Local News
+            Noticias
           </div>
           <div className="text-white/40 tracking-widest uppercase" style={{ fontSize: "1.1vw" }}>
-            Raleigh · Cary
+            Hoy
           </div>
         </div>
       </div>
@@ -70,13 +71,13 @@ export default function NewsWidget() {
       {/* Content */}
       {error && (
         <p className="text-white/40 tracking-widest uppercase" style={{ fontSize: "2vw" }}>
-          News unavailable
+          Noticias no disponibles
         </p>
       )}
 
       {!error && slides.length === 0 && (
         <p className="text-white/40 tracking-widest uppercase animate-pulse" style={{ fontSize: "2vw" }}>
-          Loading...
+          Cargando...
         </p>
       )}
 
@@ -89,9 +90,9 @@ export default function NewsWidget() {
                 <p className="text-white font-light leading-snug" style={{ fontSize: "2.6vw" }}>
                   {item.title}
                 </p>
-                {item.pubDate && (
+                {(item.pubDate || item.source) && (
                   <p className="text-white/30 mt-1 tracking-widest" style={{ fontSize: "1.2vw" }}>
-                    {item.pubDate} · wral.com
+                    {[item.pubDate, item.source].filter(Boolean).join(" · ")}
                   </p>
                 )}
               </div>

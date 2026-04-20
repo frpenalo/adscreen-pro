@@ -88,40 +88,86 @@ function sortBySport(events: any[], priority: Set<string>): any[] {
   return [...events].sort((a, b) => priorityScore(b, priority) - priorityScore(a, priority));
 }
 
+// Max slides per sport to avoid any single league dominating the rotation
+const MAX_SLIDES_PER_SPORT = 2;
+
+// Interleave multiple sport arrays in round-robin so we always see variety:
+// [MLB1, NBA1, LigaMX1, MLS1, MLB2, NBA2, LigaMX2, MLS2, NHL1, NFL1]
+function interleave<T>(groups: T[][]): T[] {
+  const result: T[] = [];
+  const maxLen = Math.max(0, ...groups.map((g) => g.length));
+  for (let i = 0; i < maxLen; i++) {
+    for (const g of groups) {
+      if (i < g.length) result.push(g[i]);
+    }
+  }
+  return result;
+}
+
 async function buildSlides(): Promise<Slide[]> {
-  const [mlbEvents, nbaEvents, nhlEvents] = await Promise.all([
+  const [
+    mlbEvents,
+    nbaEvents,
+    nhlEvents,
+    nflEvents,
+    mlsEvents,
+    ligaMxEvents,
+    laLigaEvents,
+  ] = await Promise.all([
     fetchScoreboard("baseball", "mlb"),
     fetchScoreboard("basketball", "nba"),
     fetchScoreboard("hockey", "nhl"),
+    fetchScoreboard("football", "nfl"),
+    fetchScoreboard("soccer", "usa.1"),     // MLS
+    fetchScoreboard("soccer", "mex.1"),     // Liga MX
+    fetchScoreboard("soccer", "esp.1"),     // La Liga
   ]);
 
-  console.log("MLB games:", mlbEvents.length, "NBA games:", nbaEvents.length, "NHL games:", nhlEvents.length);
+  console.log(
+    "Games today — MLB:", mlbEvents.length,
+    "NBA:", nbaEvents.length,
+    "NHL:", nhlEvents.length,
+    "NFL:", nflEvents.length,
+    "MLS:", mlsEvents.length,
+    "LigaMX:", ligaMxEvents.length,
+    "LaLiga:", laLigaEvents.length,
+  );
 
-  const slides: Slide[] = [];
+  // Build candidate slides per sport, capped at MAX_SLIDES_PER_SPORT
+  const makeSlides = (events: any[], sport: string, icon: string, priority?: Set<string>): Slide[] => {
+    if (events.length === 0) return [];
+    const sorted = priority ? sortBySport(events, priority) : events;
+    const pairs = chunkPairs(sorted).slice(0, MAX_SLIDES_PER_SPORT);
+    return pairs.map((pair) => ({ sport, icon, games: pair.map(parseGame) }));
+  };
 
-  // MLB — all games sorted by priority, 2 per slide
-  const mlbSorted = sortBySport(mlbEvents, MLB_PRIORITY);
-  for (const pair of chunkPairs(mlbSorted)) {
-    slides.push({ sport: "MLB", icon: "⚾", games: pair.map(parseGame) });
-  }
+  const mlbSlides = makeSlides(mlbEvents, "MLB", "⚾", MLB_PRIORITY);
+  const nbaSlides = makeSlides(nbaEvents, "NBA", "🏀", NBA_PRIORITY);
+  const nhlSlides = makeSlides(
+    nhlEvents.sort((a: any, b: any) => {
+      const aCanes = a.competitions?.[0]?.competitors?.some((c: any) => String(c.team?.id) === HURRICANES_ID) ? 1 : 0;
+      const bCanes = b.competitions?.[0]?.competitors?.some((c: any) => String(c.team?.id) === HURRICANES_ID) ? 1 : 0;
+      return bCanes - aCanes;
+    }),
+    "NHL",
+    "🏒",
+  );
+  const nflSlides = makeSlides(nflEvents, "NFL", "🏈");
+  const mlsSlides = makeSlides(mlsEvents, "MLS", "⚽");
+  const ligaMxSlides = makeSlides(ligaMxEvents, "Liga MX", "⚽");
+  const laLigaSlides = makeSlides(laLigaEvents, "La Liga", "⚽");
 
-  // NBA — all games sorted by priority, 2 per slide
-  const nbaSorted = sortBySport(nbaEvents, NBA_PRIORITY);
-  for (const pair of chunkPairs(nbaSorted)) {
-    slides.push({ sport: "NBA", icon: "🏀", games: pair.map(parseGame) });
-  }
-
-  // NHL — Hurricanes first, then any other game if no Canes
-  const nhlSorted = nhlEvents.sort((a: any, b: any) => {
-    const aCanes = a.competitions?.[0]?.competitors?.some((c: any) => String(c.team?.id) === HURRICANES_ID) ? 1 : 0;
-    const bCanes = b.competitions?.[0]?.competitors?.some((c: any) => String(c.team?.id) === HURRICANES_ID) ? 1 : 0;
-    return bCanes - aCanes;
-  }).slice(0, 2);
-  for (const pair of chunkPairs(nhlSorted)) {
-    slides.push({ sport: "NHL", icon: "🏒", games: pair.map(parseGame) });
-  }
-
-  return slides;
+  // Round-robin across all sports so the rotation always shows variety.
+  // Soccer leagues first (priority for Latam audience), then US sports.
+  return interleave([
+    ligaMxSlides,
+    mlsSlides,
+    laLigaSlides,
+    mlbSlides,
+    nbaSlides,
+    nflSlides,
+    nhlSlides,
+  ]);
 }
 
 // ── Mini game card ──────────────────────────────────────────────────────────
