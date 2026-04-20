@@ -26,6 +26,16 @@ interface Slide {
   games: GameCard[];
 }
 
+interface LeagueCounts {
+  LMX: number;
+  MLS: number;
+  LAL: number;
+  MLB: number;
+  NBA: number;
+  NFL: number;
+  NHL: number;
+}
+
 function toScore(val: any): number {
   if (val == null) return 0;
   if (typeof val === "object") return Number(val.value ?? val.displayValue ?? 0);
@@ -110,6 +120,10 @@ function interleave<T>(groups: T[][]): T[] {
   return result;
 }
 
+// Last breakdown of games per league (updated by buildSlides). Rendered
+// as a small diagnostic strip so we can see from the TV without DevTools.
+let leagueCounts: LeagueCounts = { LMX: 0, MLS: 0, LAL: 0, MLB: 0, NBA: 0, NFL: 0, NHL: 0 };
+
 async function buildSlides(): Promise<Slide[]> {
   const [
     mlbEvents,
@@ -174,6 +188,16 @@ async function buildSlides(): Promise<Slide[]> {
     nflSlides,
     nhlSlides,
   ]);
+
+  leagueCounts = {
+    LMX: ligaMxSlides.length,
+    MLS: mlsSlides.length,
+    LAL: laLigaSlides.length,
+    MLB: mlbSlides.length,
+    NBA: nbaSlides.length,
+    NFL: nflSlides.length,
+    NHL: nhlSlides.length,
+  };
 
   console.log(
     "Slide counts —",
@@ -339,10 +363,17 @@ export default function SportsWidget() {
         </>
       )}
 
-      {/* Slide counter (diagnostic) */}
+      {/* Diagnostic strip: per-league counts + current slide */}
       {!loading && slides.length > 0 && (
-        <div className="absolute bottom-4 left-4 text-white/30 text-xs tracking-widest uppercase tabular-nums">
-          {current + 1} / {slides.length}
+        <div className="absolute bottom-4 left-4 text-white/40 text-xs tracking-widest tabular-nums flex gap-3">
+          <span>LMX:{leagueCounts.LMX}</span>
+          <span>MLS:{leagueCounts.MLS}</span>
+          <span>LAL:{leagueCounts.LAL}</span>
+          <span>MLB:{leagueCounts.MLB}</span>
+          <span>NBA:{leagueCounts.NBA}</span>
+          <span>NFL:{leagueCounts.NFL}</span>
+          <span>NHL:{leagueCounts.NHL}</span>
+          <span className="text-white/60">· {current + 1}/{slides.length}</span>
         </div>
       )}
 
