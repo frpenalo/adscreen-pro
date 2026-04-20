@@ -6,23 +6,15 @@ interface NewsItem {
   source?: string;
 }
 
-let newsCache: NewsItem[] = [];
+// ── Module-level state (persists across mount/unmount) ──────────────────────
+// PlayerPage mounts NewsWidget for ~10s then unmounts. If slide index lived
+// in component state it would reset to 0 every time — same bug SportsWidget
+// had. Persist the index at module scope so each appearance advances.
+let slidesCache: NewsItem[][] = [];
 let cacheTime = 0;
-const CACHE_TTL = 10 * 60 * 1000;
-
-async function fetchNews(): Promise<NewsItem[]> {
-  if (newsCache.length > 0 && Date.now() - cacheTime < CACHE_TTL) return newsCache;
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  const res = await fetch(`${supabaseUrl}/functions/v1/fetch-news?lang=es`, {
-    headers: { "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
-  });
-  if (!res.ok) throw new Error("fetch-news failed");
-  const data = await res.json();
-  const items: NewsItem[] = data.items ?? [];
-  if (items.length > 0) { newsCache = items; cacheTime = Date.now(); }
-  return items;
-}
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+let globalSlideIndex = 0;
+let fetchInFlight: Promise<NewsItem[][]> | null = null;
 
 function chunkPairs<T>(arr: T[]): T[][] {
   const pairs: T[][] = [];
@@ -30,23 +22,61 @@ function chunkPairs<T>(arr: T[]): T[][] {
   return pairs;
 }
 
+async function fetchNews(): Promise<NewsItem[][]> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const res = await fetch(`${supabaseUrl}/functions/v1/fetch-news?lang=es&_t=${Date.now()}`, {
+    headers: { "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("fetch-news failed");
+  const data = await res.json();
+  const items: NewsItem[] = data.items ?? [];
+  return chunkPairs(items);
+}
+
+async function getSlides(): Promise<NewsItem[][]> {
+  const fresh = Date.now() - cacheTime < CACHE_TTL && slidesCache.length > 0;
+  if (fresh) return slidesCache;
+  if (fetchInFlight) return fetchInFlight;
+  fetchInFlight = fetchNews()
+    .then((s) => {
+      if (s.length > 0) {
+        slidesCache = s;
+        cacheTime = Date.now();
+      }
+      fetchInFlight = null;
+      return s;
+    })
+    .catch((err) => {
+      fetchInFlight = null;
+      throw err;
+    });
+  return fetchInFlight;
+}
+
 export default function NewsWidget() {
-  const [slides, setSlides] = useState<NewsItem[][]>([]);
+  const [slides, setSlides] = useState<NewsItem[][]>(slidesCache);
   const [current, setCurrent] = useState(0);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    fetchNews()
-      .then((items) => setSlides(chunkPairs(items)))
-      .catch(() => setError(true));
+    let cancelled = false;
+    getSlides()
+      .then((s) => {
+        if (cancelled) return;
+        setSlides(s);
+        if (s.length > 0) {
+          const idx = globalSlideIndex % s.length;
+          globalSlideIndex = (globalSlideIndex + 1) % s.length;
+          setCurrent(idx);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+    return () => { cancelled = true; };
   }, []);
-
-  // Rotate slides every 12 seconds
-  useEffect(() => {
-    if (slides.length <= 1) return;
-    const id = setInterval(() => setCurrent((p) => (p + 1) % slides.length), 12000);
-    return () => clearInterval(id);
-  }, [slides]);
 
   const slide = slides[current];
 
@@ -98,6 +128,13 @@ export default function NewsWidget() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Slide counter (diagnostic) */}
+      {!error && slides.length > 0 && (
+        <div className="absolute bottom-4 left-4 text-white/30 text-xs tracking-widest tabular-nums">
+          {current + 1} / {slides.length}
         </div>
       )}
 

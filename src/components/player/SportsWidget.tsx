@@ -73,29 +73,46 @@ function priorityScore(event: any, priority: Set<string>): number {
   return (isLive ? 10 : 0) + count;
 }
 
-async function fetchScoreboard(sport: string, league: string): Promise<any[]> {
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    // Cache-bust so the TV/CDN doesn't keep returning stale data
-    const res = await fetch(
-      `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard?_t=${Date.now()}`,
-      { cache: "no-store" },
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    const events: any[] = data.events ?? [];
-    // Dedupe by event id — ESPN occasionally returns duplicates
-    const seen = new Set<string>();
-    const unique: any[] = [];
-    for (const e of events) {
-      const id = String(e.id ?? `${e.date}-${e.name}`);
-      if (seen.has(id)) continue;
-      seen.add(id);
-      unique.push(e);
-    }
-    return unique;
-  } catch {
-    return [];
+    return await fetch(url, { cache: "no-store", signal: controller.signal });
+  } finally {
+    clearTimeout(tid);
   }
+}
+
+async function fetchScoreboard(sport: string, league: string): Promise<any[]> {
+  const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard?_t=${Date.now()}`;
+  // Retry once on failure (network hiccups, TV Wi-Fi warmup, etc.)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url, 8000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const events: any[] = data.events ?? [];
+      // Dedupe by event id — ESPN occasionally returns duplicates
+      const seen = new Set<string>();
+      const unique: any[] = [];
+      for (const e of events) {
+        const id = String(e.id ?? `${e.date}-${e.name}`);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        unique.push(e);
+      }
+      return unique;
+    } catch (err) {
+      if (attempt === 0) {
+        console.warn(`ESPN ${sport}/${league} failed, retrying in 1s…`, err);
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      console.error(`ESPN ${sport}/${league} failed after retry`, err);
+      return [];
+    }
+  }
+  return [];
 }
 
 function isValidGame(g: GameCard): boolean {
@@ -279,18 +296,32 @@ function GameCardView({ game }: { game: GameCard }) {
 // next game in the round-robin rotation.
 let slidesCache: Slide[] = [];
 let slidesCacheTime = 0;
-const SLIDES_TTL = 5 * 60 * 1000; // 5 minutes
+const SLIDES_TTL = 5 * 60 * 1000;        // 5 min when cache is healthy
+const PARTIAL_CACHE_TTL = 60 * 1000;     // 1 min when cache is suspiciously partial
 let globalSlideIndex = 0;
 let fetchInFlight: Promise<Slide[]> | null = null;
 
+// Healthy cache = at least 3 different leagues returned games. If fewer,
+// it's likely the first fetch had some leagues time out; refresh sooner.
+function isCacheHealthy(): boolean {
+  const nonZero = Object.values(leagueCounts).filter((c) => c > 0).length;
+  return nonZero >= 3;
+}
+
 async function getSlides(): Promise<Slide[]> {
-  const fresh = Date.now() - slidesCacheTime < SLIDES_TTL && slidesCache.length > 0;
+  const ttl = isCacheHealthy() ? SLIDES_TTL : PARTIAL_CACHE_TTL;
+  const fresh = Date.now() - slidesCacheTime < ttl && slidesCache.length > 0;
   if (fresh) return slidesCache;
   if (fetchInFlight) return fetchInFlight;
+  const wasPartial = slidesCache.length > 0 && !isCacheHealthy();
   fetchInFlight = buildSlides().then((s) => {
     slidesCache = s;
     slidesCacheTime = Date.now();
     fetchInFlight = null;
+    // If we just recovered from a partial cache (e.g. first fetch only got
+    // LigaMX), reset the rotation so the user starts at LMX#1, MLS#1, LAL#1
+    // etc. in order instead of jumping into the middle of the new array.
+    if (wasPartial && isCacheHealthy()) globalSlideIndex = 0;
     return s;
   });
   return fetchInFlight;
