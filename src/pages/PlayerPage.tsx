@@ -237,6 +237,19 @@ export default function PlayerPage() {
     return () => clearInterval(interval);
   }, [screenId]);
 
+  // Auto-reload every 6h — prevents longevity bugs (memory leaks,
+  // stale service worker, abandoned websockets, video decoder state).
+  // Jittered by ±5 min to avoid a thundering-herd reload across the
+  // whole fleet if many screens were opened at the same time.
+  useEffect(() => {
+    const SIX_HOURS = 6 * 60 * 60 * 1000;
+    const jitter = Math.floor((Math.random() - 0.5) * 10 * 60 * 1000); // ±5 min
+    const timeout = setTimeout(() => {
+      window.location.reload();
+    }, SIX_HOURS + jitter);
+    return () => clearTimeout(timeout);
+  }, []);
+
   const clearImageTimer = () => {
     if (imageTimerRef.current) clearTimeout(imageTimerRef.current);
   };
