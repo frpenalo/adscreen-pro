@@ -63,18 +63,10 @@ function priorityScore(event: any, priority: Set<string>): number {
   return (isLive ? 10 : 0) + count;
 }
 
-function fmtDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}${m}${dd}`;
-}
-
-async function fetchOneDay(sport: string, league: string, date?: string): Promise<any[]> {
+async function fetchScoreboard(sport: string, league: string): Promise<any[]> {
   try {
-    const qs = date ? `?dates=${date}` : "";
     const res = await fetch(
-      `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard${qs}`
+      `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard`
     );
     if (!res.ok) return [];
     const data = await res.json();
@@ -84,56 +76,17 @@ async function fetchOneDay(sport: string, league: string, date?: string): Promis
   }
 }
 
-// Fetch today + yesterday so every league has SOMETHING to show (finals count).
-async function fetchScoreboard(sport: string, league: string): Promise<any[]> {
-  const today = new Date();
-  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-  const [a, b] = await Promise.all([
-    fetchOneDay(sport, league),
-    fetchOneDay(sport, league, fmtDate(yesterday)),
-  ]);
-  // Dedupe by event id in case today's API returns yesterday overlap
-  const seen = new Set<string>();
-  const all: any[] = [];
-  for (const e of [...a, ...b]) {
-    const id = String(e.id ?? "");
-    if (id && seen.has(id)) continue;
-    if (id) seen.add(id);
-    all.push(e);
-  }
-  return all;
-}
-
 function isValidGame(g: GameCard): boolean {
   return (g.home.abbr !== "" || !!g.home.logo) && (g.away.abbr !== "" || !!g.away.logo);
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function chunkPairs<T>(arr: T[]): T[][] {
-  const pairs: T[][] = [];
-  for (let i = 0; i < arr.length; i += 2) {
-    pairs.push(arr.slice(i, i + 2));
-  }
-  return pairs;
 }
 
 function sortBySport(events: any[], priority: Set<string>): any[] {
   return [...events].sort((a, b) => priorityScore(b, priority) - priorityScore(a, priority));
 }
 
-// Max slides per sport to avoid any single league dominating the rotation
-const MAX_SLIDES_PER_SPORT = 2;
-
-// Interleave multiple sport arrays in round-robin so we always see variety:
-// [MLB1, NBA1, LigaMX1, MLS1, MLB2, NBA2, LigaMX2, MLS2, NHL1, NFL1]
+// Interleave multiple sport arrays in round-robin so each league shows
+// one game per cycle: [LigaMX1, MLS1, MLB1, NBA1, LigaMX2, MLS2, ...]
+// Empty leagues are skipped automatically.
 function interleave<T>(groups: T[][]): T[] {
   const result: T[] = [];
   const maxLen = Math.max(0, ...groups.map((g) => g.length));
@@ -174,15 +127,12 @@ async function buildSlides(): Promise<Slide[]> {
     "LaLiga:", laLigaEvents.length,
   );
 
-  // Build candidate slides per sport, capped at MAX_SLIDES_PER_SPORT.
-  // Drop games with no team info (otherwise empty cards render).
+  // One game per slide. Drop invalid games (no team abbr or logo).
   const makeSlides = (events: any[], sport: string, icon: string, priority?: Set<string>): Slide[] => {
     if (events.length === 0) return [];
     const sorted = priority ? sortBySport(events, priority) : events;
     const games = sorted.map(parseGame).filter(isValidGame);
-    if (games.length === 0) return [];
-    const pairs = chunkPairs(games).slice(0, MAX_SLIDES_PER_SPORT);
-    return pairs.map((pair) => ({ sport, icon, games: pair }));
+    return games.map((g) => ({ sport, icon, games: [g] }));
   };
 
   const mlbSlides = makeSlides(mlbEvents, "MLB", "⚾", MLB_PRIORITY);
