@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLang } from "@/contexts/LangContext";
 import { useAdminNotifications } from "@/hooks/useAdminData";
-import { LogOut, Users, Handshake, Film, Link2, DollarSign, FileUp, Settings, Bell, Menu, Map, Megaphone, ShoppingBag } from "lucide-react";
+import { LogOut, Users, Handshake, Film, Link2, DollarSign, FileUp, Settings, Bell, Menu, Map, Megaphone, ShoppingBag, Activity } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ const navItems = [
   { key: "advertisers", icon: Users },
   { key: "partners", icon: Handshake },
   { key: "map", icon: Map },
+  { key: "fleet", icon: Activity },
   { key: "content", icon: Film },
   { key: "referrals", icon: Link2 },
   { key: "payouts", icon: DollarSign },
@@ -75,6 +76,7 @@ const AdminLayout = ({ children, currentPage, onPageChange }: AdminLayoutProps) 
     advertisers: t.adminDashboard.advertisers,
     partners: t.adminDashboard.partners,
     map: "Mapa",
+    fleet: "Fleet Health",
     content: t.adminDashboard.content,
     referrals: t.adminDashboard.referrals,
     payouts: t.adminDashboard.payouts,
