@@ -65,12 +65,24 @@ function priorityScore(event: any, priority: Set<string>): number {
 
 async function fetchScoreboard(sport: string, league: string): Promise<any[]> {
   try {
+    // Cache-bust so the TV/CDN doesn't keep returning stale data
     const res = await fetch(
-      `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard`
+      `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard?_t=${Date.now()}`,
+      { cache: "no-store" },
     );
     if (!res.ok) return [];
     const data = await res.json();
-    return data.events ?? [];
+    const events: any[] = data.events ?? [];
+    // Dedupe by event id — ESPN occasionally returns duplicates
+    const seen = new Set<string>();
+    const unique: any[] = [];
+    for (const e of events) {
+      const id = String(e.id ?? `${e.date}-${e.name}`);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      unique.push(e);
+    }
+    return unique;
   } catch {
     return [];
   }
@@ -303,6 +315,13 @@ export default function SportsWidget() {
           </div>
 
         </>
+      )}
+
+      {/* Slide counter (diagnostic) */}
+      {!loading && slides.length > 0 && (
+        <div className="absolute bottom-4 left-4 text-white/30 text-xs tracking-widest uppercase tabular-nums">
+          {current + 1} / {slides.length}
+        </div>
       )}
 
       <div className="absolute bottom-4 right-4 text-white/15 text-xs tracking-widest uppercase">
