@@ -12,6 +12,7 @@ import ScreensMapScreen from "@/components/admin/ScreensMapScreen";
 import SalesTemplatesScreen from "@/components/admin/SalesTemplatesScreen";
 import ProductsScreen from "@/components/admin/ProductsScreen";
 import FleetHealthScreen from "@/components/admin/FleetHealthScreen";
+import FillerScreen from "@/components/admin/FillerScreen";
 
 const AdminDashboard = () => {
   const [page, setPage] = useState("advertisers");
@@ -27,6 +28,7 @@ const AdminDashboard = () => {
       case "payouts": return <PayoutsScreen />;
       case "importCsv": return <ImportCsvScreen />;
       case "templates": return <SalesTemplatesScreen />;
+      case "filler": return <FillerScreen />;
       case "products": return <ProductsScreen />;
       case "settings": return <SettingsScreen />;
       case "notifications": return <NotificationsScreen />;
