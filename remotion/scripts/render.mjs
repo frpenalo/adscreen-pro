@@ -132,22 +132,12 @@ async function main() {
     codec: "h264",
     outputLocation: outputPath,
     inputProps,
-    // pixel format explícito — el más universal para H.264/TVs.
+    // HD (1920x1080) debe ir marcado como BT.709 para que TVs/navegadores
+    // decodifiquen los colores correctamente (sin esto, algunos asumen BT.601
+    // y los negros se vuelven azulados y los dorados rosados).
+    colorSpace: "bt709",
+    // yuv420p explícito — pixel format estándar que toda TV puede decodificar.
     pixelFormat: "yuv420p",
-    // Inyecta SOLO las etiquetas de color BT.709 en el contenedor MP4.
-    // No re-codifica ni transforma el stream H.264 (eso rompía el player).
-    // Le dice al reproductor "este video usa BT.709" para que decodifique
-    // los negros como negros y los dorados como dorados, sin tocar la
-    // codificación que ya funcionaba.
-    ffmpegOverride: ({ args }) => {
-      const colorTags = [
-        "-color_primaries", "bt709",
-        "-color_trc",       "bt709",
-        "-colorspace",      "bt709",
-      ];
-      // Insertar antes del último argumento (la ruta de salida).
-      return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
-    },
     onProgress: ({ progress }) => {
       process.stdout.write(`\r   Progress: ${Math.round(progress * 100)}%`);
     },
