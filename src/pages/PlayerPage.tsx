@@ -145,9 +145,16 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError }: AdFrameProps) {
     return () => ro.disconnect();
   }, [compute, ad.id]);
 
-  // QR size: ~10% of the media's shorter dimension, clamped.
-  const qrSize = box ? Math.max(80, Math.min(220, Math.min(box.width, box.height) * 0.12)) : 120;
-  const padding = box ? Math.max(12, Math.min(box.width, box.height) * 0.025) : 16;
+  // QR placement — reads per-product overrides stored in ad.metadata.qr_x/y/size_pct
+  // (set by admin via QrPositionPicker). Falls back to the legacy bottom-right
+  // 12% placement so older ads without those fields keep rendering the same.
+  const metaX = typeof ad.metadata?.qr_x === "number" ? ad.metadata.qr_x : null;
+  const metaY = typeof ad.metadata?.qr_y === "number" ? ad.metadata.qr_y : null;
+  const metaSize = typeof ad.metadata?.qr_size_pct === "number" ? ad.metadata.qr_size_pct : null;
+
+  const sizePct = metaSize ?? 0.12;
+  const qrSize = box ? Math.max(60, Math.min(320, Math.min(box.width, box.height) * sizePct)) : 120;
+  const padding = box ? Math.max(8, qrSize * 0.06) : 12;
 
   return (
     <div ref={wrapperRef} className="relative w-full h-full">
@@ -177,19 +184,31 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError }: AdFrameProps) {
         />
       )}
 
-      {ad.qr_url && box && (
-        <div
-          className="absolute bg-white rounded-lg shadow-lg"
-          style={{
-            left: box.left + box.width - qrSize - padding * 2,
-            top: box.top + box.height - qrSize - padding * 2,
-            padding,
-            zIndex: 10,
-          }}
-        >
-          <QRCodeSVG value={ad.qr_url} size={qrSize} />
-        </div>
-      )}
+      {ad.qr_url && box && (() => {
+        // If admin picked a position (metaX/metaY), center the QR box on that
+        // fraction of the media. Otherwise use legacy bottom-right anchor.
+        const boxSide = qrSize + padding * 2;
+        let left: number;
+        let top: number;
+        if (metaX !== null && metaY !== null) {
+          left = box.left + metaX * box.width - boxSide / 2;
+          top = box.top + metaY * box.height - boxSide / 2;
+          // Clamp to stay fully inside the media rect
+          left = Math.max(box.left, Math.min(box.left + box.width - boxSide, left));
+          top = Math.max(box.top, Math.min(box.top + box.height - boxSide, top));
+        } else {
+          left = box.left + box.width - boxSide;
+          top = box.top + box.height - boxSide;
+        }
+        return (
+          <div
+            className="absolute bg-white rounded-lg shadow-lg"
+            style={{ left, top, padding, zIndex: 10 }}
+          >
+            <QRCodeSVG value={ad.qr_url} size={qrSize} />
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -207,6 +226,12 @@ export default function PlayerPage() {
   const imageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const widgetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Safety-net timer for videos: some kiosk browsers (Fully Kiosk on Android
+  // WebView, certain Smart TV browsers) don't reliably fire `onEnded` after
+  // an H.264 video finishes. Without this timer the carousel gets stuck on
+  // the same ad forever. We force-advance after the video's known duration
+  // (or a 15s fallback if the metadata isn't loaded yet).
+  const videoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const adsSinceWidgetRef = useRef(0);
   const widgetIndexRef = useRef(0);
@@ -255,6 +280,9 @@ export default function PlayerPage() {
   };
   const clearWidgetTimer = () => {
     if (widgetTimerRef.current) clearTimeout(widgetTimerRef.current);
+  };
+  const clearVideoTimer = () => {
+    if (videoTimerRef.current) clearTimeout(videoTimerRef.current);
   };
 
   const logImpression = useCallback((ad: Ad) => {
@@ -319,9 +347,26 @@ export default function PlayerPage() {
     if (!loaded || ads.length === 0 || activeWidget) return;
     const ad = ads[current];
     if (ad?.type === "video" && videoRef.current) {
-      videoRef.current.currentTime = 0;
-      videoRef.current.play().catch(() => next());
+      const v = videoRef.current;
+      v.currentTime = 0;
+      v.play().catch(() => next());
+
+      // Safety-net: force-advance if onEnded never fires (Fully Kiosk /
+      // Android WebView / Smart TV browser quirk). Use the video's own
+      // duration + 2s buffer when available; otherwise 15s fallback.
+      clearVideoTimer();
+      const armTimer = () => {
+        const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : 13;
+        clearVideoTimer();
+        videoTimerRef.current = setTimeout(next, (dur + 2) * 1000);
+      };
+      if (v.readyState >= 1 /* HAVE_METADATA */) {
+        armTimer();
+      } else {
+        v.addEventListener("loadedmetadata", armTimer, { once: true });
+      }
     }
+    return clearVideoTimer;
   }, [current, loaded, ads, next, activeWidget]);
 
   const fetchAds = useCallback(async () => {
