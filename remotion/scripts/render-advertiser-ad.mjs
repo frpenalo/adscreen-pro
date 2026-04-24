@@ -128,8 +128,8 @@ async function main() {
     // decodifiquen los colores correctamente (sin esto, algunos asumen BT.601
     // y los negros se vuelven azulados y los dorados rosados).
     colorSpace: "bt709",
-    // yuv420p explícito — pixel format estándar que toda TV puede decodificar.
-    pixelFormat: "yuv420p",
+    // PNG lossless en el intermedio — evita compresión JPEG que puede shift de color.
+    imageFormat: "png",
     onProgress: ({ progress }) => {
       process.stdout.write(`\r   Progress: ${Math.round(progress * 100)}%`);
     },
