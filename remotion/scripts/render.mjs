@@ -45,7 +45,14 @@ async function uploadToStorage(bucket, storagePath, buffer, contentType) {
   const url = `${supabaseUrl}/storage/v1/object/${bucket}/${storagePath}`;
   const res = await fetch(url, {
     method: "POST",
-    headers: { ...authHeaders, "Content-Type": contentType, "x-upsert": "true" },
+    headers: {
+      ...authHeaders,
+      "Content-Type": contentType,
+      "x-upsert": "true",
+      // 60s en lugar del default de 3600s — permite que los re-renders
+      // lleguen rápido a las pantallas sin esperar 1 hora por el CDN.
+      "cache-control": "max-age=60",
+    },
     body: buffer,
   });
   if (!res.ok) {
@@ -125,6 +132,12 @@ async function main() {
     codec: "h264",
     outputLocation: outputPath,
     inputProps,
+    // HD (1920x1080) debe ir marcado como BT.709 para que TVs/navegadores
+    // decodifiquen los colores correctamente (sin esto, algunos asumen BT.601
+    // y los negros se vuelven azulados y los dorados rosados).
+    colorSpace: "bt709",
+    // PNG lossless en el intermedio — evita compresión JPEG que puede shift de color.
+    imageFormat: "png",
     onProgress: ({ progress }) => {
       process.stdout.write(`\r   Progress: ${Math.round(progress * 100)}%`);
     },
