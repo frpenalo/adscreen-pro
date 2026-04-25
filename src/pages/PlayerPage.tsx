@@ -367,7 +367,10 @@ export default function PlayerPage() {
       }
     }
     return clearVideoTimer;
-  }, [current, loaded, ads, next, activeWidget]);
+    // `tick` is required so this effect re-fires when next() advances
+    // from the only ad back to itself (current stays the same when
+    // ads.length === 1). Without it, the video plays once and freezes.
+  }, [tick, current, loaded, ads, next, activeWidget]);
 
   const fetchAds = useCallback(async () => {
     try {
