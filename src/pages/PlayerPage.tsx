@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { QRCodeSVG } from "qrcode.react";
+// Canvas en vez de SVG — Android WebView (Fully Kiosk) tiene
+// problemas renderizando SVGs inline. El canvas es universal.
+import { QRCodeCanvas } from "qrcode.react";
 import ClockWidget from "@/components/player/ClockWidget";
 import WeatherWidget from "@/components/player/WeatherWidget";
 import JokeWidget from "@/components/player/JokeWidget";
@@ -205,7 +207,7 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError }: AdFrameProps) {
             className="absolute bg-white rounded-lg shadow-lg"
             style={{ left, top, padding, zIndex: 10 }}
           >
-            <QRCodeSVG value={ad.qr_url} size={qrSize} />
+            <QRCodeCanvas value={ad.qr_url} size={qrSize} />
           </div>
         );
       })()}
