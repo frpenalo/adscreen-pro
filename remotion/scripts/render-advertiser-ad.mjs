@@ -14,7 +14,35 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import { spawn } from "child_process";
 import { fileURLToPath } from "url";
+
+// ── Color tagging helper ──────────────────────────────────────────────────────
+// Post-process the rendered MP4 to embed BT.709 color tags at BOTH levels:
+//   1. The H.264 bitstream VUI parameters (via -bsf:v h264_metadata)
+//   2. The MP4 container metadata (-color_primaries / -color_trc / -colorspace)
+// Uses -c copy so the H.264 frame data is byte-identical to the input — no
+// re-encoding, no quality loss, no codec parameter changes that could trip
+// kiosk browsers. Only the color interpretation flags change, fixing the
+// black→teal / gold→pink shift on TVs that default to BT.601 SD.
+async function tagBT709(inPath) {
+  const outPath = inPath + ".bt709.mp4";
+  await new Promise((resolve, reject) => {
+    const ff = spawn("ffmpeg", [
+      "-y", "-i", inPath,
+      "-c", "copy",
+      "-bsf:v", "h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:video_full_range_flag=0",
+      "-color_primaries", "bt709",
+      "-color_trc",       "bt709",
+      "-colorspace",      "bt709",
+      "-movflags",        "+faststart",
+      outPath,
+    ], { stdio: ["ignore", "ignore", "inherit"] });
+    ff.on("error", reject);
+    ff.on("exit", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg color-tag exited ${code}`)));
+  });
+  fs.renameSync(outPath, inPath);
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -117,19 +145,16 @@ async function main() {
     codec: "h264",
     outputLocation: outputPath,
     inputProps,
-    // Etiquetas BT.709 al contenedor MP4 — el stream H.264 queda
-    // intacto (no se transforma ni re-codifica). Solo añade metadata
-    // para que TVs/navegadores no asuman BT.601 por defecto y los
-    // colores oscuros no se vuelvan azules ni los dorados rosados.
-    ffmpegOverride: ({ args }) => {
-      const colorTags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
-      return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
-    },
     onProgress: ({ progress }) => {
       process.stdout.write(`\r   Progress: ${Math.round(progress * 100)}%`);
     },
   });
   console.log("\nVideo rendered:", outputPath);
+
+  // ── 3b. Embed BT.709 color tags (bitstream + container, no re-encode) ──
+  console.log("Tagging video as BT.709 (no re-encode)...");
+  await tagBT709(outputPath);
+  console.log("Color tags embedded");
 
   // ── 4. Upload MP4 to Supabase Storage ───────────────────────────────────
   console.log("Uploading video to Supabase Storage...");
