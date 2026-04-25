@@ -117,6 +117,14 @@ async function main() {
     codec: "h264",
     outputLocation: outputPath,
     inputProps,
+    // Etiquetas BT.709 al contenedor MP4 — el stream H.264 queda
+    // intacto (no se transforma ni re-codifica). Solo añade metadata
+    // para que TVs/navegadores no asuman BT.601 por defecto y los
+    // colores oscuros no se vuelvan azules ni los dorados rosados.
+    ffmpegOverride: ({ args }) => {
+      const colorTags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
+      return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
+    },
     onProgress: ({ progress }) => {
       process.stdout.write(`\r   Progress: ${Math.round(progress * 100)}%`);
     },
