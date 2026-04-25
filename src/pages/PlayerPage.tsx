@@ -175,7 +175,7 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError }: AdFrameProps) {
           }}
           src={ad.final_media_path}
           className="w-full h-full object-contain"
-          preload="auto"
+          autoPlay
           muted
           playsInline
           onEnded={onVideoEnded}
