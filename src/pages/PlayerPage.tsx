@@ -351,7 +351,12 @@ export default function PlayerPage() {
     if (ad?.type === "video" && videoRef.current) {
       const v = videoRef.current;
       v.currentTime = 0;
-      v.play().catch(() => next());
+      // Don't cascade to next() if play() rejects — that triggered a rapid
+      // bounce back to the previous ad whenever a freshly-mounted <video>
+      // hadn't finished buffering yet, making the first ad appear to play
+      // 2-3 times before rotating. Real load failures still advance via
+      // onError; transient buffering issues recover via the safety timer.
+      v.play().catch((err) => console.warn("video play() rejected (will retry via safety timer):", err));
 
       // Safety-net: force-advance if onEnded never fires (Fully Kiosk /
       // Android WebView / Smart TV browser quirk). Use the video's own
