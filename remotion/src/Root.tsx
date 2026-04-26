@@ -2,6 +2,7 @@ import "./index.css";
 import { Composition } from "remotion";
 import { SalesAd } from "./SalesAd";
 import { AdvertiserAd } from "./AdvertiserAd";
+import { SpecAd } from "./SpecAd";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -53,6 +54,31 @@ export const RemotionRoot: React.FC = () => {
           cta: "Visítanos",
           adStyle: "dark-gold",
         }}
+      />
+
+      {/* ── Spec-driven AdvertiserAd (Phase 3 of migration) ── */}
+      {/* Lives alongside the legacy AdvertiserAd above. The render */}
+      {/* script can target either composition until A/B testing in   */}
+      {/* Phase 5 confirms parity. Default props produce a Studio    */}
+      {/* preview without arguments — production renders pass an    */}
+      {/* explicit `spec` from generateSpec(). */}
+      <Composition
+        id="SpecAdHorizontal"
+        component={SpecAd}
+        durationInFrames={300}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{}}
+      />
+      <Composition
+        id="SpecAdVertical"
+        component={SpecAd}
+        durationInFrames={300}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{}}
       />
     </>
   );
