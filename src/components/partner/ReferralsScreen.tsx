@@ -60,14 +60,37 @@ const ReferralsScreen = () => {
     return () => { cancelled = true; };
   }, [partnerId]);
 
-  const handleDownloadVertical = () => {
-    if (!verticalUrl) return;
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadVertical = async () => {
+    if (!verticalUrl || downloading) return;
     const businessName = (profile as any)?.business_name ?? "adscreenpro";
     const safeName = String(businessName).toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const a = document.createElement("a");
-    a.href = verticalUrl;
-    a.download = `${safeName}-vertical.mp4`;
-    a.click();
+
+    // The HTML `download` attribute is ignored when the file is on a
+    // different origin (Supabase Storage vs our Hostinger app), so the
+    // browser opens the MP4 inline instead of saving it. Workaround:
+    // fetch the bytes ourselves into a blob, create a same-origin
+    // object URL, and trigger the download from that.
+    setDownloading(true);
+    try {
+      const res = await fetch(verticalUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `${safeName}-vertical.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Free the memory after the download has been initiated.
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    } catch (e: any) {
+      toast.error(`No se pudo descargar: ${e?.message ?? "error desconocido"}`);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   // FASE 2: link de Shopify con código de referido
@@ -101,8 +124,9 @@ const ReferralsScreen = () => {
                     <Copy className="h-4 w-4 mr-1.5" /> {tP.copyLink}
                   </Button>
                   {verticalUrl && (
-                    <Button size="sm" variant="default" onClick={handleDownloadVertical}>
-                      <Download className="h-4 w-4 mr-1.5" /> Descargar video para redes
+                    <Button size="sm" variant="default" onClick={handleDownloadVertical} disabled={downloading}>
+                      <Download className={`h-4 w-4 mr-1.5 ${downloading ? "animate-pulse" : ""}`} />
+                      {downloading ? "Descargando..." : "Descargar video para redes"}
                     </Button>
                   )}
                 </div>
