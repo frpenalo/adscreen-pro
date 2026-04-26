@@ -27,6 +27,7 @@ import type {
   EntryAnimation,
   LinePosition,
   CTAStyle,
+  LayoutTemplate,
 } from "./types.ts";
 import { FAMILIES, DEFAULT_FAMILY } from "./families.ts";
 
@@ -169,6 +170,12 @@ export function generateSpec(inputs: AdInputs): AdSpec {
   const entry: EntryAnimation = pick(family.entries, seed, "entry");
   const linePosition: LinePosition = pick(family.linePositions, seed, "line-pos");
   const ctaStyle: CTAStyle   = pick(family.ctaStyles, seed, "cta-style");
+  // Layout pool can be missing on a hand-crafted spec — fall back gracefully
+  // to the legacy default so the generator never explodes on incomplete data.
+  const layoutPool = (family.layouts && family.layouts.length > 0)
+    ? family.layouts
+    : (["photo-full-text-bottom"] as LayoutTemplate[]);
+  const layoutTemplate: LayoutTemplate = pick(layoutPool, seed, "layout");
   const ctaCfg = STYLE_BY_CTA[ctaStyle];
   const zoomTo = ZOOM_BY_MOTION[motion];
 
@@ -199,6 +206,7 @@ export function generateSpec(inputs: AdInputs): AdSpec {
     },
 
     layout: {
+      template: layoutTemplate,
       alignment: linePosition,   // headline+content align with the line
       padding: def.padding,
     },

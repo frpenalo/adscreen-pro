@@ -55,6 +55,29 @@ export type EntryAnimation = "slide-up" | "slide-from-left" | "fade-up" | "type-
 export type LinePosition = "left" | "center" | "right";
 export type CTAStyle = "outlined" | "filled" | "underlined" | "badge";
 
+// ── Layout templates ─────────────────────────────────────────────────────────
+// Structural variations — different arrangements of the photo + text. This
+// is what gives ads from the same family genuinely different LOOKS, not
+// just different cosmetic skins. Each family declares which layouts it
+// supports in its `layouts` field; the generator rolls one with the same
+// seeded variation logic as every other dimension.
+export type LayoutTemplate =
+  // Default. Full-bleed photo, content stack at the bottom with the
+  // family's chosen alignment. Mirrors the legacy AdvertiserAd structure.
+  | "photo-full-text-bottom"
+  // Cinematic / movie-poster. Photo fills the frame, content stack pulls
+  // toward the visual center with bigger headline. High-impact for
+  // luxury, gym, nightclub categories.
+  | "photo-overlay-text-center"
+  // 50/50 split. Photo on one side, text panel on the other. Editorial
+  // / corporate feel. Strong fit for tech, real-estate, clean-pro.
+  // Horizontal renders left/right; vertical renders top/bottom.
+  | "split-vertical"
+  // Photo framed in a Polaroid-style card on a decorative background,
+  // text below. Intimate / handcrafted. Pairs with artisan, vintage,
+  // pastel, rose-elegant.
+  | "polaroid";
+
 // ── Family definition ────────────────────────────────────────────────────────
 // Curated visual family. The 15 families together cover the full range of
 // businesses we expect to onboard.
@@ -82,6 +105,12 @@ export interface FamilyDefinition {
   entries: EntryAnimation[];  // headline entry animation options
   linePositions: LinePosition[];
   ctaStyles: CTAStyle[];
+
+  // Layout templates this family looks good in. Each family declares 1-3
+  // — the spec generator rolls one. Hard-required: at least one entry
+  // (defaults to `["photo-full-text-bottom"]` if omitted, but the type
+  // forces the family author to think about it).
+  layouts: LayoutTemplate[];
 
   // Overlay gradient (CSS string). Static per family — the gradient is
   // identity-defining for the look, the variation happens above it.
@@ -118,6 +147,7 @@ export interface AdSpec {
   };
 
   layout: {
+    template: LayoutTemplate;
     alignment: "left" | "center" | "right";
     padding: string;
   };

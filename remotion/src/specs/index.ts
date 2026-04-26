@@ -12,6 +12,7 @@ export type {
   EntryAnimation,
   LinePosition,
   CTAStyle,
+  LayoutTemplate,
   FamilyDefinition,
   AdSpec,
   AdInputs,

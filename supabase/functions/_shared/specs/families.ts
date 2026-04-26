@@ -8,15 +8,6 @@
  * relative imports); the Remotion module runs on Node (which
  * does not). Both files must stay byte-equivalent apart from this
  * header block and the .ts suffix on the relative import below.
- *
- * Each family is a self-contained record:
- *   - Where it fits (affinity / incompatible categories)
- *   - What photo vibes it pairs with
- *   - Variation pools per dimension (palette, fonts, motions, entries, etc.)
- *
- * Adding a new family = adding a new record here. No other file needs to
- * change. The spec generator and SpecAd composition consume this list
- * generically through the FamilyDefinition contract.
  */
 
 import type { FamilyDefinition } from "./types.ts";
@@ -41,6 +32,7 @@ const darkGold: FamilyDefinition = {
   entries: ["slide-up", "fade-up"],
   linePositions: ["left", "center"],
   ctaStyles: ["outlined", "underlined"],
+  layouts: ["photo-full-text-bottom", "photo-overlay-text-center"],
   overlayGradient: "linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)",
   intro: null,
 };
@@ -65,6 +57,7 @@ const warmAmber: FamilyDefinition = {
   entries: ["fade-up", "slide-up"],
   linePositions: ["center", "left"],
   ctaStyles: ["outlined", "filled"],
+  layouts: ["photo-full-text-bottom", "split-vertical"],
   overlayGradient: "linear-gradient(to top, rgba(50,18,0,0.90) 0%, rgba(80,30,0,0.35) 55%, transparent 100%)",
   intro: null,
 };
@@ -89,6 +82,7 @@ const roseElegant: FamilyDefinition = {
   entries: ["fade-up", "slide-up"],
   linePositions: ["left", "center"],
   ctaStyles: ["outlined", "underlined"],
+  layouts: ["photo-full-text-bottom", "polaroid"],
   overlayGradient: "linear-gradient(to top, rgba(55,10,20,0.88) 0%, rgba(90,20,35,0.30) 55%, transparent 100%)",
   intro: null,
 };
@@ -113,6 +107,7 @@ const boldEnergy: FamilyDefinition = {
   entries: ["slide-from-left", "slide-up"],
   linePositions: ["left"],
   ctaStyles: ["filled", "outlined", "badge"],
+  layouts: ["photo-overlay-text-center", "photo-full-text-bottom"],
   overlayGradient: "linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,10,40,0.55) 50%, transparent 100%)",
   intro: { type: "flash", color: "#000000", duration: 14 },
 };
@@ -137,6 +132,7 @@ const cleanPro: FamilyDefinition = {
   entries: ["slide-from-left", "fade-up"],
   linePositions: ["left", "center"],
   ctaStyles: ["filled", "outlined"],
+  layouts: ["split-vertical", "photo-full-text-bottom"],
   overlayGradient: "linear-gradient(to top, rgba(0,20,55,0.90) 0%, rgba(0,30,70,0.35) 55%, transparent 100%)",
   intro: null,
 };
@@ -161,6 +157,7 @@ const minimalistBw: FamilyDefinition = {
   entries: ["fade-up", "slide-from-left"],
   linePositions: ["left", "center"],
   ctaStyles: ["outlined", "underlined"],
+  layouts: ["split-vertical", "photo-full-text-bottom"],
   overlayGradient: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.30) 55%, transparent 100%)",
   intro: null,
 };
@@ -185,6 +182,7 @@ const tropical: FamilyDefinition = {
   entries: ["slide-up", "fade-up"],
   linePositions: ["center", "left"],
   ctaStyles: ["filled", "badge"],
+  layouts: ["photo-full-text-bottom", "polaroid"],
   overlayGradient: "linear-gradient(to top, rgba(20,80,120,0.55) 0%, rgba(255,180,140,0.20) 55%, transparent 100%)",
   intro: null,
 };
@@ -209,6 +207,7 @@ const luxuryNoir: FamilyDefinition = {
   entries: ["fade-up", "slide-up"],
   linePositions: ["center", "left"],
   ctaStyles: ["outlined", "underlined"],
+  layouts: ["photo-overlay-text-center", "photo-full-text-bottom"],
   overlayGradient: "linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.15) 100%)",
   intro: null,
 };
@@ -233,6 +232,7 @@ const modernTech: FamilyDefinition = {
   entries: ["slide-from-left", "fade-up", "type-on"],
   linePositions: ["left"],
   ctaStyles: ["filled", "outlined", "badge"],
+  layouts: ["split-vertical", "photo-full-text-bottom"],
   overlayGradient: "linear-gradient(to top, rgba(10,15,40,0.92) 0%, rgba(20,30,80,0.45) 50%, transparent 100%)",
   intro: null,
 };
@@ -257,6 +257,7 @@ const artisanWarm: FamilyDefinition = {
   entries: ["fade-up", "slide-up"],
   linePositions: ["left", "center"],
   ctaStyles: ["outlined", "underlined"],
+  layouts: ["polaroid", "photo-full-text-bottom"],
   overlayGradient: "linear-gradient(to top, rgba(60,30,10,0.88) 0%, rgba(120,80,40,0.30) 55%, transparent 100%)",
   intro: null,
 };
@@ -281,6 +282,7 @@ const urbanGraffiti: FamilyDefinition = {
   entries: ["slide-from-left", "slide-up"],
   linePositions: ["left"],
   ctaStyles: ["filled", "badge"],
+  layouts: ["photo-overlay-text-center", "photo-full-text-bottom"],
   overlayGradient: "linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.40) 50%, transparent 100%)",
   intro: { type: "flash", color: "#000000", duration: 10 },
 };
@@ -305,6 +307,7 @@ const pastelSoft: FamilyDefinition = {
   entries: ["fade-up", "slide-up"],
   linePositions: ["center", "left"],
   ctaStyles: ["filled", "outlined"],
+  layouts: ["polaroid", "split-vertical"],
   overlayGradient: "linear-gradient(to top, rgba(120,60,90,0.55) 0%, rgba(255,200,220,0.25) 55%, transparent 100%)",
   intro: null,
 };
@@ -329,6 +332,7 @@ const vintageRetro: FamilyDefinition = {
   entries: ["fade-up", "slide-up"],
   linePositions: ["left", "center"],
   ctaStyles: ["outlined", "underlined"],
+  layouts: ["polaroid", "photo-full-text-bottom"],
   overlayGradient: "linear-gradient(to top, rgba(40,20,5,0.92) 0%, rgba(80,40,10,0.40) 55%, transparent 100%)",
   intro: null,
 };
@@ -353,6 +357,7 @@ const natureOrganic: FamilyDefinition = {
   entries: ["fade-up", "slide-up"],
   linePositions: ["left", "center"],
   ctaStyles: ["outlined", "filled"],
+  layouts: ["photo-full-text-bottom", "split-vertical"],
   overlayGradient: "linear-gradient(to top, rgba(20,60,30,0.85) 0%, rgba(40,80,40,0.30) 55%, transparent 100%)",
   intro: null,
 };
@@ -377,6 +382,7 @@ const glowNeon: FamilyDefinition = {
   entries: ["slide-from-left", "fade-up", "type-on"],
   linePositions: ["left", "center"],
   ctaStyles: ["badge", "filled", "outlined"],
+  layouts: ["photo-overlay-text-center", "photo-full-text-bottom"],
   overlayGradient: "linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(20,0,40,0.55) 50%, transparent 100%)",
   intro: { type: "flash", color: "#000000", duration: 12 },
 };
