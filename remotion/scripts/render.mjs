@@ -121,6 +121,9 @@ async function main() {
   const verticalProps = {
     headline: "Tu publicidad\nen pantallas digitales",
     subtitle: "Red AdScreenPro · Raleigh NC",
+    // Hide the third "y en otras..." line — the location is already in
+    // the subtitle and the line was confusing in the social context.
+    tagline: "",
     cta: "Escanea para más info",
     qrUrl: qrPublicUrl,
     accentColor: "#7C3AED",
