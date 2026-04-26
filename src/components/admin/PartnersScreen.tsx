@@ -103,7 +103,27 @@ const PartnersScreen = () => {
         // non-critical
       }
 
-      // 2. Disparar render de video personalizado con QR del partner
+      // 2. Auto-generar código de referido AdScreenPro (non-critical)
+      //    Mismo formato que usaba el botón "Generar mi código" del partner.
+      //    Upsert evita error si ya existía un código previo.
+      //    Nota: requiere unique constraint en partner_qr_codes.partner_id
+      //    (ALTER TABLE ... ADD CONSTRAINT ... UNIQUE (partner_id)).
+      try {
+        const referralCode = `REF-${id.slice(0, 8).toUpperCase()}`;
+        const { error: qrErr } = await supabase
+          .from("partner_qr_codes")
+          .upsert({ partner_id: id, code: referralCode }, { onConflict: "partner_id" });
+        if (qrErr) {
+          // Antes este error se tragaba en silencio. Ahora lo vemos para
+          // poder diagnosticar problemas de RLS / constraint sin volver
+          // a quedar a ciegas como pasó con la tabla sin índice único.
+          toast.warning(`Código de referido: ${qrErr.message}`);
+        }
+      } catch (e: any) {
+        toast.warning(`Código de referido falló: ${e?.message ?? "error desconocido"}`);
+      }
+
+      // 3. Disparar render de video personalizado con QR del partner
       try {
         const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/trigger-render`;
         const { data: sessionData } = await supabase.auth.getSession();
