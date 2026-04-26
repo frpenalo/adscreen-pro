@@ -101,11 +101,27 @@ async function main() {
   const bundleLocation = await bundle({ entryPoint });
   console.log("✅ Bundle ready");
 
-  // ── 4. Select composition with props ────────────────────────────────────
-  const inputProps = {
+  // ── 4. Build per-format input props ─────────────────────────────────────
+  // The horizontal video plays on the partner's TV — its audience is the
+  // partner's customer who is physically inside the business. The copy
+  // pitches "advertise on this screen where customers will see you".
+  //
+  // The vertical video is for the partner to share on their own social
+  // media (WhatsApp Status, Reels, Stories). Its audience is the partner's
+  // personal network — mostly other small-business owners. The copy needs
+  // to make sense in that context (no "this screen" wording, since the
+  // viewer isn't standing in front of any screen).
+  const horizontalProps = {
     headline: "¿Quieres que tus clientes\nte vean aquí?",
     subtitle: "Anúnciate en esta pantalla",
     cta: "Escanea y reserva tu espacio",
+    qrUrl: qrPublicUrl,
+    accentColor: "#7C3AED",
+  };
+  const verticalProps = {
+    headline: "Tu publicidad\nen pantallas digitales",
+    subtitle: "Red AdScreenPro · Raleigh NC",
+    cta: "Escanea para más info",
     qrUrl: qrPublicUrl,
     accentColor: "#7C3AED",
   };
@@ -113,7 +129,7 @@ async function main() {
   const composition = await selectComposition({
     serveUrl: bundleLocation,
     id: "SalesAdHorizontal",
-    inputProps,
+    inputProps: horizontalProps,
   });
 
   // ── 5. Render video ──────────────────────────────────────────────────────
@@ -124,7 +140,7 @@ async function main() {
     serveUrl: bundleLocation,
     codec: "h264",
     outputLocation: outputPath,
-    inputProps,
+    inputProps: horizontalProps,
     // Etiquetas BT.709 al contenedor MP4 — el stream H.264 queda
     // intacto (no se transforma ni re-codifica). Solo añade metadata
     // para que TVs/navegadores no asuman BT.601 por defecto y los
@@ -168,7 +184,7 @@ async function main() {
     const verticalComposition = await selectComposition({
       serveUrl: bundleLocation,
       id: "SalesAdVertical",
-      inputProps,
+      inputProps: verticalProps,
     });
 
     verticalOutputPath = path.join(tmpDir, `sales-ad-vertical-${partnerId}.mp4`);
@@ -177,7 +193,7 @@ async function main() {
       serveUrl: bundleLocation,
       codec: "h264",
       outputLocation: verticalOutputPath,
-      inputProps,
+      inputProps: verticalProps,
       ffmpegOverride: ({ args }) => {
         const colorTags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
         return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
