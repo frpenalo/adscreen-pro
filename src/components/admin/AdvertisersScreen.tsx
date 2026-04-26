@@ -8,6 +8,78 @@ import { Badge } from "@/components/ui/badge";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+// ── Test scenarios for the spec-driven pipeline ────────────────────────────
+// One per category so we can validate every family without needing real
+// advertisers in the database. Each scenario uses a stable Unsplash photo
+// URL so re-running produces consistent input. The variations within the
+// rolled family are still seeded by `advertiser_id`, so changing the seed
+// (eg. by appending a counter) lets us see different rolls of the same
+// family.
+const TEST_SCENARIOS: Array<{
+  label: string;
+  category: string;
+  business_name: string;
+  tagline: string;
+  photo_url: string;
+}> = [
+  {
+    label: "Barber",
+    category: "barber",
+    business_name: "Fade Studio",
+    tagline: "El mejor corte de la ciudad",
+    photo_url: "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=1920&h=1080&fit=crop",
+  },
+  {
+    label: "Restaurant",
+    category: "restaurant",
+    business_name: "La Trattoria",
+    tagline: "Auténtica cocina italiana",
+    photo_url: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1920&h=1080&fit=crop",
+  },
+  {
+    label: "Gym",
+    category: "gym",
+    business_name: "Iron Athletics",
+    tagline: "Supera tus límites",
+    photo_url: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1920&h=1080&fit=crop",
+  },
+  {
+    label: "Balloon",
+    category: "balloon",
+    business_name: "Globos Felices",
+    tagline: "Decoraciones únicas",
+    photo_url: "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=1920&h=1080&fit=crop",
+  },
+  {
+    label: "Nightclub",
+    category: "nightclub",
+    business_name: "Pulse Lounge",
+    tagline: "La noche es nuestra",
+    photo_url: "https://images.unsplash.com/photo-1571266028243-d220c9c3b31f?w=1920&h=1080&fit=crop",
+  },
+  {
+    label: "Bakery",
+    category: "bakery",
+    business_name: "Pan & Honra",
+    tagline: "Horneado fresco cada día",
+    photo_url: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=1920&h=1080&fit=crop",
+  },
+  {
+    label: "Yoga",
+    category: "yoga",
+    business_name: "Zen Studio",
+    tagline: "Equilibrio y bienestar",
+    photo_url: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=1920&h=1080&fit=crop",
+  },
+  {
+    label: "Jewelry",
+    category: "jewelry",
+    business_name: "Aurora Joyas",
+    tagline: "Piezas únicas hechas a mano",
+    photo_url: "https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=1920&h=1080&fit=crop",
+  },
+];
+
 const AdvertisersScreen = () => {
   const { t } = useLang();
   const tA = t.adminDashboard;
@@ -17,6 +89,8 @@ const AdvertisersScreen = () => {
   // Phase 5 A/B: separate state so the spec test doesn't conflict with the
   // legacy re-render. Both can run in parallel for the same advertiser.
   const [testingSpec, setTestingSpec] = useState<string | null>(null);
+  // Pure test panel state (no advertiser row needed).
+  const [testingScenario, setTestingScenario] = useState<string | null>(null);
 
   const handleRerender = async (advertiser: any) => {
     setRerendering(advertiser.id);
@@ -174,6 +248,58 @@ const AdvertisersScreen = () => {
     }
   };
 
+  // ── Test scenario runner ─────────────────────────────────────────────────
+  // Doesn't require an existing advertiser. Picks one of the curated
+  // TEST_SCENARIOS, generates a synthetic ad_id and advertiser_id, then
+  // hits the same generate-spec-ad endpoint. Output lands in
+  // advertiser-ads-spec/ for visual review — never touches production.
+  const handleTestScenario = async (scenario: typeof TEST_SCENARIOS[0]) => {
+    setTestingScenario(scenario.category);
+    try {
+      const adId = `spec-test-${scenario.category}`;
+      const advertiserId = `test-advertiser-${scenario.category}`;
+
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-spec-ad`;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+
+      const res = await fetch(fnUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ad_id: adId,
+          advertiser_id: advertiserId,
+          business_name: scenario.business_name,
+          category: scenario.category,
+          tagline: scenario.tagline,
+          cta: "Visítanos",
+          photo_url: scenario.photo_url,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        toast.error(`Error: ${json.error ?? "desconocido"}`);
+        return;
+      }
+
+      const s = json.spec_summary;
+      toast.success(
+        `${scenario.label} → familia "${s.family}", font ${(s.fontFamily ?? "").split(",")[0]}, CTA ${s.cta_style}. Video en ~3 min en advertiser-ads-spec/${adId}.mp4`,
+        { duration: 12000 }
+      );
+    } catch (e: any) {
+      toast.error(`Error al conectar con el servidor: ${e?.message ?? ""}`);
+    } finally {
+      setTestingScenario(null);
+    }
+  };
+
   const filtered = advertisers?.filter((a) => {
     if (filter === "active") return a.is_active;
     if (filter === "inactive") return !a.is_active;
@@ -184,6 +310,33 @@ const AdvertisersScreen = () => {
 
   return (
     <div className="space-y-4">
+      {/* ── Test panel for the spec-driven pipeline (Phase 5) ── */}
+      {/* Lives above the table so it's reachable even when there are no */}
+      {/* advertisers in the system yet. Each scenario uses sample data + a   */}
+      {/* stable Unsplash photo so the user can see how every family looks. */}
+      <div className="rounded-lg border border-border bg-card/50 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium">Test spec pipeline</span>
+          <span className="text-xs text-muted-foreground">
+            (genera videos en advertiser-ads-spec/ — no toca pantallas)
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {TEST_SCENARIOS.map((scenario) => (
+            <Button
+              key={scenario.category}
+              size="sm"
+              variant="outline"
+              onClick={() => handleTestScenario(scenario)}
+              disabled={testingScenario === scenario.category}
+            >
+              {testingScenario === scenario.category ? "..." : scenario.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex gap-2">
         {(["all", "active", "inactive"] as const).map((f) => (
           <Button key={f} variant={filter === f ? "default" : "outline"} size="sm" onClick={() => setFilter(f)}>
