@@ -112,9 +112,9 @@ const ReferralsScreen = () => {
           <CardContent>
             <div className="flex flex-col sm:flex-row items-start gap-5">
               <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(referralUrl!)}`}
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(referralUrl!)}`}
                 alt="QR Code"
-                className="w-36 h-36 rounded-xl border border-border"
+                className="w-48 h-48 rounded-xl border border-border"
               />
               <div className="flex-1 space-y-3">
                 <p className="text-xs text-muted-foreground">Comparte este link o QR con negocios que quieran anunciarse:</p>
