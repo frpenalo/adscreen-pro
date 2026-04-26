@@ -27,6 +27,10 @@ const PARTICLES = Array.from({ length: 12 }, (_, i) => ({
 interface SalesAdProps {
   headline?: string;
   subtitle?: string;
+  // Optional third line below the subtitle. Default keeps the original
+  // horizontal-TV wording. The vertical-for-social render passes an empty
+  // string to hide it (the location is already in the subtitle there).
+  tagline?: string;
   cta?: string;
   qrUrl?: string;
 }
@@ -34,6 +38,7 @@ interface SalesAdProps {
 export const SalesAd: React.FC<SalesAdProps> = ({
   headline = "ANÚNCIATE",
   subtitle = "EN ESTA PANTALLA",
+  tagline = "y en otras en toda la ciudad",
   cta = "Escanea el código",
   qrUrl = "",
 }) => {
@@ -273,20 +278,22 @@ export const SalesAd: React.FC<SalesAdProps> = ({
           </span>
         </div>
 
-        {/* Tagline */}
-        <div style={{ transform: `translateX(${tagX}px)`, opacity: tagOp, marginBottom: 44 }}>
-          <span style={{
-            color: CREAM,
-            fontSize: 30,
-            fontWeight: 300,
-            letterSpacing: 4,
-            fontFamily: "Arial, sans-serif",
-            opacity: 0.65,
-            fontStyle: "italic",
-          }}>
-            y en otras en toda la ciudad
-          </span>
-        </div>
+        {/* Tagline — hidden when prop is empty (vertical/social render) */}
+        {tagline && (
+          <div style={{ transform: `translateX(${tagX}px)`, opacity: tagOp, marginBottom: 44 }}>
+            <span style={{
+              color: CREAM,
+              fontSize: 30,
+              fontWeight: 300,
+              letterSpacing: 4,
+              fontFamily: "Arial, sans-serif",
+              opacity: 0.65,
+              fontStyle: "italic",
+            }}>
+              {tagline}
+            </span>
+          </div>
+        )}
 
         {/* Separador con shimmer */}
         <div style={{ position: "relative", width: sepWidth, height: 1, marginBottom: 50, overflow: "visible" }}>

@@ -101,11 +101,30 @@ async function main() {
   const bundleLocation = await bundle({ entryPoint });
   console.log("✅ Bundle ready");
 
-  // ── 4. Select composition with props ────────────────────────────────────
-  const inputProps = {
+  // ── 4. Build per-format input props ─────────────────────────────────────
+  // The horizontal video plays on the partner's TV — its audience is the
+  // partner's customer who is physically inside the business. The copy
+  // pitches "advertise on this screen where customers will see you".
+  //
+  // The vertical video is for the partner to share on their own social
+  // media (WhatsApp Status, Reels, Stories). Its audience is the partner's
+  // personal network — mostly other small-business owners. The copy needs
+  // to make sense in that context (no "this screen" wording, since the
+  // viewer isn't standing in front of any screen).
+  const horizontalProps = {
     headline: "¿Quieres que tus clientes\nte vean aquí?",
     subtitle: "Anúnciate en esta pantalla",
     cta: "Escanea y reserva tu espacio",
+    qrUrl: qrPublicUrl,
+    accentColor: "#7C3AED",
+  };
+  const verticalProps = {
+    headline: "Tu publicidad\nen pantallas digitales",
+    subtitle: "Red AdScreenPro · Raleigh NC",
+    // Hide the third "y en otras..." line — the location is already in
+    // the subtitle and the line was confusing in the social context.
+    tagline: "",
+    cta: "Escanea para más info",
     qrUrl: qrPublicUrl,
     accentColor: "#7C3AED",
   };
@@ -113,7 +132,7 @@ async function main() {
   const composition = await selectComposition({
     serveUrl: bundleLocation,
     id: "SalesAdHorizontal",
-    inputProps,
+    inputProps: horizontalProps,
   });
 
   // ── 5. Render video ──────────────────────────────────────────────────────
@@ -124,7 +143,7 @@ async function main() {
     serveUrl: bundleLocation,
     codec: "h264",
     outputLocation: outputPath,
-    inputProps,
+    inputProps: horizontalProps,
     // Etiquetas BT.709 al contenedor MP4 — el stream H.264 queda
     // intacto (no se transforma ni re-codifica). Solo añade metadata
     // para que TVs/navegadores no asuman BT.601 por defecto y los
@@ -157,9 +176,58 @@ async function main() {
     qr_url: null,
   });
 
-  // ── 8. Cleanup temp files ────────────────────────────────────────────────
+  // ── 8. Render vertical version (1080x1920) for partner social-media download ─
+  // This is NOT inserted into the ads table — it's only uploaded to Storage so
+  // the partner can download it from their dashboard to share on Reels/Stories.
+  // Wrapped in its own try/catch so a vertical-render failure can never block
+  // or undo the horizontal publish that was just completed above.
+  let verticalOutputPath = null;
+  try {
+    console.log("\n📱 Rendering vertical version for social-media download...");
+    const verticalComposition = await selectComposition({
+      serveUrl: bundleLocation,
+      id: "SalesAdVertical",
+      inputProps: verticalProps,
+    });
+
+    verticalOutputPath = path.join(tmpDir, `sales-ad-vertical-${partnerId}.mp4`);
+    await renderMedia({
+      composition: verticalComposition,
+      serveUrl: bundleLocation,
+      codec: "h264",
+      outputLocation: verticalOutputPath,
+      inputProps: verticalProps,
+      ffmpegOverride: ({ args }) => {
+        const colorTags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
+        return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
+      },
+      onProgress: ({ progress }) => {
+        process.stdout.write(`\r   Vertical progress: ${Math.round(progress * 100)}%`);
+      },
+    });
+    console.log("\n✅ Vertical rendered:", verticalOutputPath);
+
+    const verticalStoragePath = `partner-sales-ads-vertical/${partnerId}.mp4`;
+    const verticalPublicUrl = await uploadToStorage(
+      "ad-media",
+      verticalStoragePath,
+      fs.readFileSync(verticalOutputPath),
+      "video/mp4"
+    );
+    console.log("✅ Vertical URL:", verticalPublicUrl);
+    // Note: intentionally NOT inserting into the ads table. This file is
+    // only for the partner's own download; it must not appear in any
+    // player rotation.
+  } catch (verticalErr) {
+    console.error("\n⚠️  Vertical render/upload failed (non-blocking):", verticalErr.message);
+  }
+
+  // ── 9. Cleanup temp files ────────────────────────────────────────────────
   fs.unlinkSync(qrLocalPath);
   fs.unlinkSync(outputPath);
+  if (verticalOutputPath && fs.existsSync(verticalOutputPath)) {
+    fs.unlinkSync(verticalOutputPath);
+  }
 
   console.log(`\n🚀 Done! Sales ad published for partner: ${partnerName}`);
 }
