@@ -33,6 +33,11 @@ interface SalesAdProps {
   tagline?: string;
   cta?: string;
   qrUrl?: string;
+  // QR rendered size in pixels (the white inner box). Defaults to 220
+  // (bumped up from the original hardcoded 176). The vertical render
+  // can pass a larger value since its layout has more vertical room
+  // and the viewer is closer to the screen on social media.
+  qrSize?: number;
 }
 
 export const SalesAd: React.FC<SalesAdProps> = ({
@@ -41,6 +46,7 @@ export const SalesAd: React.FC<SalesAdProps> = ({
   tagline = "y en otras en toda la ciudad",
   cta = "Escanea el código",
   qrUrl = "",
+  qrSize = 220,
 }) => {
   const frame = useCurrentFrame();
   const { fps, width } = useVideoConfig();
@@ -318,8 +324,8 @@ export const SalesAd: React.FC<SalesAdProps> = ({
             <div style={{
               backgroundColor: "#fff",
               padding: 14,
-              width: 176,
-              height: 176,
+              width: qrSize,
+              height: qrSize,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

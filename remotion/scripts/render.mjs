@@ -117,6 +117,9 @@ async function main() {
     cta: "Escanea y reserva tu espacio",
     qrUrl: qrPublicUrl,
     accentColor: "#7C3AED",
+    // 220 px on the 1920x1080 TV screen — readable from across a salon
+    // without crowding the headline above it.
+    qrSize: 220,
   };
   const verticalProps = {
     headline: "Tu publicidad\nen pantallas digitales",
@@ -127,6 +130,10 @@ async function main() {
     cta: "Escanea para más info",
     qrUrl: qrPublicUrl,
     accentColor: "#7C3AED",
+    // 280 px on the 1080x1920 vertical — there's more vertical room and
+    // viewers scan it from a phone screen at close range, so a larger
+    // QR is both fits and improves scan reliability.
+    qrSize: 280,
   };
 
   const composition = await selectComposition({
