@@ -111,16 +111,20 @@ const STYLES: Record<AdStyle, StyleConfig> = {
 };
 
 interface AdvertiserAdProps {
-  photoUrl: string;
-  businessName: string;
+  // Optional with defaults so Remotion can preview the composition with
+  // no inputs (Remotion Studio loads compositions without props during
+  // dev). The actual render scripts always pass these via renderMedia
+  // inputProps, so production output is unchanged.
+  photoUrl?: string;
+  businessName?: string;
   tagline?: string;
   cta?: string;
   adStyle?: AdStyle;
 }
 
 export const AdvertiserAd: React.FC<AdvertiserAdProps> = ({
-  photoUrl,
-  businessName,
+  photoUrl = "",
+  businessName = "Mi Negocio",
   tagline = "",
   cta = "Visítanos",
   adStyle = "dark-gold",
