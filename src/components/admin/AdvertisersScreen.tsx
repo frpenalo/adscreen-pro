@@ -10,11 +10,21 @@ import { toast } from "sonner";
 
 // ── Test scenarios for the spec-driven pipeline ────────────────────────────
 // One per category so we can validate every family without needing real
-// advertisers in the database. Each scenario uses a stable Unsplash photo
-// URL so re-running produces consistent input. The variations within the
-// rolled family are still seeded by `advertiser_id`, so changing the seed
-// (eg. by appending a counter) lets us see different rolls of the same
-// family.
+// advertisers in the database. Photos come from Picsum (Lorem Picsum) — a
+// no-rate-limit no-API-key service designed for hotlinking. Each scenario
+// uses a seeded URL so re-running produces the SAME photo, making A/B
+// comparisons reliable. The seed string == the category for readability.
+//
+// We previously used Unsplash but its CDN occasionally 404'd or
+// rate-limited the GitHub Actions runner mid-render, killing the pipeline
+// with "Error loading image". Picsum is rock-solid for test infra. The
+// photos aren't category-relevant (Picsum returns random landscapes),
+// but for validating layouts/families that doesn't matter — we want
+// consistency, not photorealism. When the user uploads a real photo
+// in production this code path won't be involved at all.
+const PICSUM = (seed: string) =>
+  `https://picsum.photos/seed/${seed}/1920/1080`;
+
 const TEST_SCENARIOS: Array<{
   label: string;
   category: string;
@@ -22,62 +32,14 @@ const TEST_SCENARIOS: Array<{
   tagline: string;
   photo_url: string;
 }> = [
-  {
-    label: "Barber",
-    category: "barber",
-    business_name: "Fade Studio",
-    tagline: "El mejor corte de la ciudad",
-    photo_url: "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=1920&h=1080&fit=crop",
-  },
-  {
-    label: "Restaurant",
-    category: "restaurant",
-    business_name: "La Trattoria",
-    tagline: "Auténtica cocina italiana",
-    photo_url: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1920&h=1080&fit=crop",
-  },
-  {
-    label: "Gym",
-    category: "gym",
-    business_name: "Iron Athletics",
-    tagline: "Supera tus límites",
-    photo_url: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1920&h=1080&fit=crop",
-  },
-  {
-    label: "Balloon",
-    category: "balloon",
-    business_name: "Globos Felices",
-    tagline: "Decoraciones únicas",
-    photo_url: "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=1920&h=1080&fit=crop",
-  },
-  {
-    label: "Nightclub",
-    category: "nightclub",
-    business_name: "Pulse Lounge",
-    tagline: "La noche es nuestra",
-    photo_url: "https://images.unsplash.com/photo-1571266028243-d220c9c3b31f?w=1920&h=1080&fit=crop",
-  },
-  {
-    label: "Bakery",
-    category: "bakery",
-    business_name: "Pan & Honra",
-    tagline: "Horneado fresco cada día",
-    photo_url: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=1920&h=1080&fit=crop",
-  },
-  {
-    label: "Yoga",
-    category: "yoga",
-    business_name: "Zen Studio",
-    tagline: "Equilibrio y bienestar",
-    photo_url: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=1920&h=1080&fit=crop",
-  },
-  {
-    label: "Jewelry",
-    category: "jewelry",
-    business_name: "Aurora Joyas",
-    tagline: "Piezas únicas hechas a mano",
-    photo_url: "https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=1920&h=1080&fit=crop",
-  },
+  { label: "Barber",     category: "barber",     business_name: "Fade Studio",     tagline: "El mejor corte de la ciudad",   photo_url: PICSUM("barber") },
+  { label: "Restaurant", category: "restaurant", business_name: "La Trattoria",    tagline: "Auténtica cocina italiana",     photo_url: PICSUM("restaurant") },
+  { label: "Gym",        category: "gym",        business_name: "Iron Athletics",  tagline: "Supera tus límites",            photo_url: PICSUM("gym") },
+  { label: "Balloon",    category: "balloon",    business_name: "Globos Felices",  tagline: "Decoraciones únicas",           photo_url: PICSUM("balloon") },
+  { label: "Nightclub",  category: "nightclub",  business_name: "Pulse Lounge",    tagline: "La noche es nuestra",           photo_url: PICSUM("nightclub") },
+  { label: "Bakery",     category: "bakery",     business_name: "Pan & Honra",     tagline: "Horneado fresco cada día",      photo_url: PICSUM("bakery") },
+  { label: "Yoga",       category: "yoga",       business_name: "Zen Studio",      tagline: "Equilibrio y bienestar",        photo_url: PICSUM("yoga") },
+  { label: "Jewelry",    category: "jewelry",    business_name: "Aurora Joyas",    tagline: "Piezas únicas hechas a mano",   photo_url: PICSUM("jewelry") },
 ];
 
 const AdvertisersScreen = () => {
