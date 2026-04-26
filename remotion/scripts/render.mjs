@@ -157,9 +157,58 @@ async function main() {
     qr_url: null,
   });
 
-  // ── 8. Cleanup temp files ────────────────────────────────────────────────
+  // ── 8. Render vertical version (1080x1920) for partner social-media download ─
+  // This is NOT inserted into the ads table — it's only uploaded to Storage so
+  // the partner can download it from their dashboard to share on Reels/Stories.
+  // Wrapped in its own try/catch so a vertical-render failure can never block
+  // or undo the horizontal publish that was just completed above.
+  let verticalOutputPath = null;
+  try {
+    console.log("\n📱 Rendering vertical version for social-media download...");
+    const verticalComposition = await selectComposition({
+      serveUrl: bundleLocation,
+      id: "SalesAdVertical",
+      inputProps,
+    });
+
+    verticalOutputPath = path.join(tmpDir, `sales-ad-vertical-${partnerId}.mp4`);
+    await renderMedia({
+      composition: verticalComposition,
+      serveUrl: bundleLocation,
+      codec: "h264",
+      outputLocation: verticalOutputPath,
+      inputProps,
+      ffmpegOverride: ({ args }) => {
+        const colorTags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
+        return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
+      },
+      onProgress: ({ progress }) => {
+        process.stdout.write(`\r   Vertical progress: ${Math.round(progress * 100)}%`);
+      },
+    });
+    console.log("\n✅ Vertical rendered:", verticalOutputPath);
+
+    const verticalStoragePath = `partner-sales-ads-vertical/${partnerId}.mp4`;
+    const verticalPublicUrl = await uploadToStorage(
+      "ad-media",
+      verticalStoragePath,
+      fs.readFileSync(verticalOutputPath),
+      "video/mp4"
+    );
+    console.log("✅ Vertical URL:", verticalPublicUrl);
+    // Note: intentionally NOT inserting into the ads table. This file is
+    // only for the partner's own download; it must not appear in any
+    // player rotation.
+  } catch (verticalErr) {
+    console.error("\n⚠️  Vertical render/upload failed (non-blocking):", verticalErr.message);
+  }
+
+  // ── 9. Cleanup temp files ────────────────────────────────────────────────
   fs.unlinkSync(qrLocalPath);
   fs.unlinkSync(outputPath);
+  if (verticalOutputPath && fs.existsSync(verticalOutputPath)) {
+    fs.unlinkSync(verticalOutputPath);
+  }
 
   console.log(`\n🚀 Done! Sales ad published for partner: ${partnerName}`);
 }

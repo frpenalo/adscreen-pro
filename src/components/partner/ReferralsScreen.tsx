@@ -1,9 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLang } from "@/contexts/LangContext";
-import { useAuth } from "@/contexts/AuthContext";
 import { usePartnerReferrals, usePartnerEarnings, usePartnerQrCode, usePartnerProfile } from "@/hooks/usePartnerData";
-import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,13 +11,10 @@ import { toast } from "sonner";
 const ReferralsScreen = () => {
   const { t } = useLang();
   const tP = t.partnerDashboard;
-  const { user } = useAuth();
   const { data: referrals } = usePartnerReferrals();
   const { data: earnings } = usePartnerEarnings();
-  const { data: qrCode, refetch: refetchQr } = usePartnerQrCode();
+  const { data: qrCode } = usePartnerQrCode();
   const { data: profile } = usePartnerProfile();
-  const queryClient = useQueryClient();
-  const [generatingQr, setGeneratingQr] = useState(false);
 
   // Accumulated earnings per advertiser
   const accMap = new Map<string, number>();
@@ -46,26 +40,34 @@ const ReferralsScreen = () => {
     }
   };
 
-  const handleDownloadQr = () => {
-    if (!referralUrl) return;
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(referralUrl)}`;
-    const a = document.createElement("a");
-    a.href = qrUrl;
-    a.download = "referral-qr.png";
-    a.click();
-  };
+  // ── Vertical SalesAd video for social-media download ────────────────────────
+  // The video lives at a predictable Storage path:
+  //   {SUPABASE_URL}/storage/v1/object/public/ad-media/partner-sales-ads-vertical/{partner_id}.mp4
+  // It's generated alongside the horizontal SalesAd whenever an admin approves
+  // the partner. We HEAD-check it on mount so the download button only shows
+  // up for partners whose render has completed (older partners approved
+  // before this feature shipped won't have one until admin re-renders them).
+  const partnerId = qrCode?.partner_id;
+  const [verticalUrl, setVerticalUrl] = useState<string | null>(null);
 
-  const handleGenerateCode = async () => {
-    if (!user) return;
-    setGeneratingQr(true);
-    const code = `REF-${user.id.slice(0, 8).toUpperCase()}`;
-    const { error } = await supabase.from("partner_qr_codes").insert({ partner_id: user.id, code });
-    if (error) toast.error(error.message);
-    else {
-      refetchQr();
-      queryClient.invalidateQueries({ queryKey: ["partner-qr"] });
-    }
-    setGeneratingQr(false);
+  useEffect(() => {
+    if (!partnerId) { setVerticalUrl(null); return; }
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/ad-media/partner-sales-ads-vertical/${partnerId}.mp4`;
+    let cancelled = false;
+    fetch(url, { method: "HEAD" })
+      .then((res) => { if (!cancelled && res.ok) setVerticalUrl(url); })
+      .catch(() => { /* file not yet rendered — keep button hidden */ });
+    return () => { cancelled = true; };
+  }, [partnerId]);
+
+  const handleDownloadVertical = () => {
+    if (!verticalUrl) return;
+    const businessName = (profile as any)?.business_name ?? "adscreenpro";
+    const safeName = String(businessName).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const a = document.createElement("a");
+    a.href = verticalUrl;
+    a.download = `${safeName}-vertical.mp4`;
+    a.click();
   };
 
   // FASE 2: link de Shopify con código de referido
@@ -75,16 +77,16 @@ const ReferralsScreen = () => {
   return (
     <div className="space-y-6">
 
-      {/* QR / Referral link */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <QrCode className="h-5 w-5 text-primary" />
-            {tP.qrSection}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {qrCode ? (
+      {/* QR / Referral link — sólo se muestra cuando el admin ya generó el código */}
+      {qrCode && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <QrCode className="h-5 w-5 text-primary" />
+              {tP.qrSection}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="flex flex-col sm:flex-row items-start gap-5">
               <img
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(referralUrl!)}`}
@@ -98,22 +100,17 @@ const ReferralsScreen = () => {
                   <Button size="sm" variant="outline" onClick={handleCopyLink}>
                     <Copy className="h-4 w-4 mr-1.5" /> {tP.copyLink}
                   </Button>
-                  <Button size="sm" variant="outline" onClick={handleDownloadQr}>
-                    <Download className="h-4 w-4 mr-1.5" /> {tP.downloadQr}
-                  </Button>
+                  {verticalUrl && (
+                    <Button size="sm" variant="default" onClick={handleDownloadVertical}>
+                      <Download className="h-4 w-4 mr-1.5" /> Descargar video para redes
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="text-center py-4 space-y-3">
-              <p className="text-sm text-muted-foreground">Genera tu código de referido para empezar a ganar comisiones.</p>
-              <Button onClick={handleGenerateCode} disabled={generatingQr}>
-                <QrCode className="h-4 w-4 mr-2" /> Generar mi código
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Advertisers list */}
       <div>
