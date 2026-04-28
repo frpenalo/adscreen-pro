@@ -211,15 +211,20 @@ const CreateAdScreen = () => {
       const token = sessionData.session?.access_token;
       if (!token) throw new Error("No session");
 
-      // Insert ad row — status "pending" because user has approved the photo
-      // and the only thing left is the render + the admin's final OK.
+      // Insert ad row — status "draft" puts it in the admin's review queue.
+      // (The Postgres ad_status enum only allows draft / approved /
+      // published / rejected, so we keep using "draft" the same way the
+      // legacy direct-image and direct-video paths do.)
+      // The admin sees pending ads in their queue, reviews the rendered
+      // video once it lands, and flips status to "published" via the
+      // approve-ad edge function.
       const { data: adData, error: insertErr } = await supabase
         .from("ads")
         .insert({
           advertiser_id: user.id,
           type: "video",
           final_media_path: "",
-          status: "pending",
+          status: "draft",
           metadata: { photo_url: enhancedUrl },
         } as any)
         .select("id")
