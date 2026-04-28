@@ -3,13 +3,13 @@ import { useLang } from "@/contexts/LangContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdvertiserProfile, useSubscription } from "@/hooks/useAdvertiserData";
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { Upload, Camera, Sparkles, Video, AlertTriangle, ArrowLeft, Send, Loader2 } from "lucide-react";
+import { Upload, Camera, Sparkles, Video, AlertTriangle, ArrowLeft, Send, Loader2, CheckCircle2, ListChecks } from "lucide-react";
 
 const ACCEPTED_IMAGE = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
 const ACCEPTED_VIDEO = ["video/mp4", "video/quicktime"];
@@ -44,24 +44,22 @@ const CreateAdScreen = () => {
   const [adCta, setAdCta] = useState("Visítanos");
 
   // ── Processing state ─────────────────────────────────────────────────────────
-  const [processing, setProcessing] = useState(false);   // AI enhance step
-  const [submitting, setSubmitting] = useState(false);    // final submit
-  const [renderingAdId, setRenderingAdId] = useState<string | null>(null);
+  // Two-phase flow:
+  //   1. processing       — calling generate-ad to enhance the photo
+  //   2. enhancedUrl set  — show the enhanced photo with a single "Send" button
+  //   3. submitting       — calling generate-ad-video + inserting the ad row
+  //   4. submittedSuccess — final state, user is done; their ad is rendering in
+  //                         the background and will appear in "Mis Anuncios"
+  //                         once admin approves.
+  // The previous version polled for the rendered video here so the user could
+  // see the final video before sending. The new flow ships the user away as
+  // soon as they approve the enhanced PHOTO — the render runs out-of-band and
+  // the user reviews the final video later in MyAdsScreen.
+  const [processing, setProcessing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [enhancedUrl, setEnhancedUrl] = useState<string | null>(null);
+  const [submittedSuccess, setSubmittedSuccess] = useState(false);
   const [showDemoModal, setShowDemoModal] = useState(false);
-
-  // ── Poll for rendered video ──────────────────────────────────────────────────
-  const { data: renderingAd } = useQuery({
-    queryKey: ["rendering-ad-advertiser", renderingAdId],
-    queryFn: async () => {
-      const { data } = await supabase.from("ads").select("*").eq("id", renderingAdId!).single();
-      return data;
-    },
-    enabled: !!renderingAdId,
-    refetchInterval: (query) => {
-      const d = query.state.data as any;
-      return d?.final_media_path ? false : 5000;
-    },
-  });
 
   // ── Plan limits ──────────────────────────────────────────────────────────────
   const plan = (profile as any)?.plan ?? "basico";
@@ -148,8 +146,11 @@ const CreateAdScreen = () => {
       img.src = url;
     });
 
-  // ── Unified: AI enhance → animated video ────────────────────────────────────
-  const handleCreateAd = async () => {
+  // ── Phase 1: AI-enhance the photo ─────────────────────────────────────────
+  // Calls the generate-ad edge function which improves the uploaded image.
+  // On success we keep the URL in `enhancedUrl` and show the user a preview;
+  // they then decide whether to send it for rendering+publication.
+  const handleEnhancePhoto = async () => {
     if (isDemo) { setShowDemoModal(true); return; }
     if (!file || !user || processing) return;
     if (remainingAds <= 0) {
@@ -162,7 +163,6 @@ const CreateAdScreen = () => {
       const token = sessionData.session?.access_token;
       if (!token) throw new Error("No session");
 
-      // Step 1 — AI enhance image (category drives the style)
       const imageBase64 = await toBase64(file);
       const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad`;
       const fnRes = await fetch(fnUrl, {
@@ -185,16 +185,51 @@ const CreateAdScreen = () => {
       }
       const aiRes = await fnRes.json();
       if (!aiRes.imageUrl) throw new Error("La IA no devolvió imagen. Intenta de nuevo.");
+      setEnhancedUrl(aiRes.imageUrl);
+    } catch (e: any) {
+      toast({ title: e.message || "Error al mejorar la imagen", variant: "destructive" });
+    } finally {
+      setProcessing(false);
+    }
+  };
 
-      // Step 2 — trigger Remotion render with enhanced image + text
+  // ── Phase 2: Send for render + admin review ───────────────────────────────
+  // The user has approved the enhanced photo. We:
+  //   1. Insert the ad row in `pending` status (admin queue)
+  //   2. Dispatch the Remotion render in the background
+  //   3. Notify the admin
+  //   4. Show the success state — user is done; can navigate away.
+  // The Remotion render runs out-of-band and updates the ad row when finished.
+  // The advertiser sees the final video in "Mis Anuncios" once it renders +
+  // the admin approves it.
+  const handleSendForRender = async () => {
+    if (isDemo) { setShowDemoModal(true); return; }
+    if (!user || !enhancedUrl || submitting) return;
+    setSubmitting(true);
+    try {
+      const { data: sessionData } = await supabase.auth.refreshSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("No session");
+
+      // Insert ad row — status "pending" because user has approved the photo
+      // and the only thing left is the render + the admin's final OK.
       const { data: adData, error: insertErr } = await supabase
         .from("ads")
-        .insert({ advertiser_id: user.id, type: "video", final_media_path: "", status: "draft" } as any)
+        .insert({
+          advertiser_id: user.id,
+          type: "video",
+          final_media_path: "",
+          status: "pending",
+          metadata: { photo_url: enhancedUrl },
+        } as any)
         .select("id")
         .single();
       if (insertErr) throw insertErr;
-
       const adId = (adData as any).id;
+
+      // Dispatch the Remotion render. Returns immediately — the workflow
+      // runs on GitHub Actions and updates the ad's final_media_path
+      // when finished. We don't block the user on this.
       const videoFnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad-video`;
       await fetch(videoFnUrl, {
         method: "POST",
@@ -205,7 +240,7 @@ const CreateAdScreen = () => {
         },
         body: JSON.stringify({
           ad_id: adId,
-          photo_url: aiRes.imageUrl,
+          photo_url: enhancedUrl,
           business_name: adBusinessName.trim() || profile?.business_name || "",
           tagline: adTagline.trim(),
           cta: adCta.trim(),
@@ -214,13 +249,19 @@ const CreateAdScreen = () => {
         }),
       });
 
-      setRenderingAdId(adId);
+      // Notify the admin that there's a new ad to review.
+      await supabase.from("admin_notifications").insert({
+        type: "new_ad",
+        message: `Nuevo anuncio animado pendiente de ${profile?.business_name ?? "un anunciante"}.`,
+      });
+
+      setSubmittedSuccess(true);
       queryClient.invalidateQueries({ queryKey: ["advertiser-profile"] });
-      toast({ title: "¡Procesando tu anuncio! Listo en ~2 minutos." });
+      queryClient.invalidateQueries({ queryKey: ["advertiser-ads"] });
     } catch (e: any) {
-      toast({ title: e.message || "Error al crear el anuncio", variant: "destructive" });
+      toast({ title: e.message || "Error al enviar el anuncio", variant: "destructive" });
     } finally {
-      setProcessing(false);
+      setSubmitting(false);
     }
   };
 
@@ -292,25 +333,9 @@ const CreateAdScreen = () => {
     }
   };
 
-  // ── Submit rendered video ────────────────────────────────────────────────────
-  const handleSubmitRenderedVideo = async () => {
-    if (!renderingAd || !user || submitting) return;
-    setSubmitting(true);
-    try {
-      await supabase.from("ads").update({ status: "pending" }).eq("id", (renderingAd as any).id);
-      await supabase.from("admin_notifications").insert({
-        type: "new_ad",
-        message: `Video animado pendiente de ${profile?.business_name ?? "un anunciante"}.`,
-      });
-      toast({ title: "Video enviado a revisión" });
-      queryClient.invalidateQueries({ queryKey: ["advertiser-ads"] });
-      resetState();
-    } catch (e: any) {
-      toast({ title: e.message, variant: "destructive" });
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  // (handleSubmitRenderedVideo removed — the user no longer waits for the
+  // rendered video on this screen. Once they click Send on the enhanced
+  // photo, the ad is inserted as pending and the user is freed up.)
 
   const resetState = () => {
     setFile(null);
@@ -321,7 +346,8 @@ const CreateAdScreen = () => {
     setAdTagline("");
     setAdCta("Visítanos");
     setProcessing(false);
-    setRenderingAdId(null);
+    setEnhancedUrl(null);
+    setSubmittedSuccess(false);
   };
 
   const DemoModal = () => (
@@ -418,130 +444,177 @@ const CreateAdScreen = () => {
     );
   }
 
-  // ── STEP 3: Image — create or send ──────────────────────────────────────────
-  const videoReady = !!(renderingAd as any)?.final_media_path;
-
+  // ── STEP 3: Image — two-phase flow ──────────────────────────────────────────
+  // States, in order:
+  //   submittedSuccess === true  → "¡Listo! Te avisamos cuando esté en pantallas."
+  //   enhancedUrl !== null       → enhanced photo preview + single "Enviar" button
+  //   processing === true        → enhancing spinner
+  //   else (idle)                → original preview + 2 options (send as-is / enhance)
   return (
     <div className="space-y-5 max-w-lg mx-auto">
 
-      {/* Preview */}
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <img src={previewUrl!} alt="Preview" className="w-full rounded-lg object-cover border border-border" style={{ aspectRatio: "16/9" }} />
-          {!processing && !renderingAdId && (
-            <Button variant="outline" size="sm" onClick={resetState}>
-              <ArrowLeft className="h-4 w-4 mr-1.5" /> Cambiar foto
+      {/* ── Final state: ad submitted, user is done ── */}
+      {submittedSuccess && (
+        <Card className="border-2 border-green-500/30">
+          <CardContent className="p-8 flex flex-col items-center text-center gap-5">
+            <CheckCircle2 className="h-14 w-14 text-green-600" />
+            <div className="space-y-2">
+              <h3 className="font-semibold text-lg text-foreground">¡Anuncio enviado!</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Estamos creando tu video animado en el fondo. Cuando esté listo y aprobado por nuestro equipo, lo verás publicado en <strong>Mis Anuncios</strong> y comenzará a aparecer en pantallas.
+              </p>
+              <p className="text-xs text-muted-foreground pt-1">
+                No necesitas esperar acá. Puedes cerrar esta página o crear otro anuncio.
+              </p>
+            </div>
+            <Button
+              onClick={resetState}
+              className="w-full gap-2"
+              size="lg"
+            >
+              <Sparkles className="h-4 w-4" /> Crear otro anuncio
             </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Option 1: Send as-is (always visible unless processing) */}
-      {!processing && !renderingAdId && (
-        <Card className="border-2 border-primary/20">
-          <CardContent className="p-4 space-y-3">
-            <p className="text-sm font-medium text-foreground">¿Tu diseño ya está listo?</p>
-            <p className="text-xs text-muted-foreground">Envíalo directamente para aprobación sin modificar.</p>
-            <Button onClick={handleSubmitImage} disabled={submitting} className="w-full" size="lg">
-              {submitting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enviando...</> : <><Send className="h-4 w-4 mr-2" /> Enviar para aprobación</>}
-            </Button>
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <ListChecks className="h-3.5 w-3.5" />
+              Revisa el progreso en la pestaña "Mis Anuncios"
+            </p>
           </CardContent>
         </Card>
       )}
 
-      {/* Divider */}
-      {!processing && !renderingAdId && (
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-border" />
-          <span className="text-xs text-muted-foreground font-medium px-2">o crea tu anuncio con IA</span>
-          <div className="flex-1 h-px bg-border" />
-        </div>
-      )}
-
-      {/* Option 2: AI + animated video */}
-      {!processing && !renderingAdId && (
+      {/* ── Enhanced photo: single approve button ── */}
+      {enhancedUrl && !submittedSuccess && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2 text-foreground">
               <Sparkles className="h-4 w-4 text-violet-600" />
-              Crear anuncio animado con IA
+              Tu foto mejorada con IA
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              La IA mejora tu foto y genera un video animado automáticamente.
+              Si te gusta el resultado, presiona Enviar. Crearemos el video animado en el fondo y aparecerá en "Mis Anuncios" cuando esté listo.
             </p>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <Input
-              value={adBusinessName}
-              onChange={(e) => setAdBusinessName(e.target.value)}
-              placeholder="Nombre del negocio *"
-            />
-            <Input
-              value={adTagline}
-              onChange={(e) => setAdTagline(e.target.value)}
-              placeholder="Texto del anuncio (opcional): ej. Corte $15 esta semana"
-            />
-            <Input
-              value={adCta}
-              onChange={(e) => setAdCta(e.target.value)}
-              placeholder="Call to action: ej. Visítanos · 919-555-0101"
+          <CardContent className="p-4 space-y-3">
+            <img
+              src={enhancedUrl}
+              alt="Foto mejorada"
+              className="w-full rounded-lg object-cover border border-border"
+              style={{ aspectRatio: "16/9" }}
             />
             <Button
-              className="w-full gap-2 mt-1"
-              onClick={handleCreateAd}
-              disabled={!adBusinessName.trim()}
-              style={{ background: "linear-gradient(135deg, #7c3aed, #6d28d9)", border: "none" }}
+              className="w-full gap-2"
+              onClick={handleSendForRender}
+              disabled={submitting}
               size="lg"
+              style={{ background: "linear-gradient(135deg, #7c3aed, #6d28d9)", border: "none" }}
             >
-              <Sparkles className="h-4 w-4" /> Mejorar con IA y animar
+              {submitting
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</>
+                : <><Send className="h-4 w-4" /> Enviar</>
+              }
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-muted-foreground"
+              onClick={resetState}
+              disabled={submitting}
+            >
+              <ArrowLeft className="h-4 w-4 mr-1.5" /> Empezar de nuevo
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Processing: AI enhancement */}
-      {processing && (
+      {/* ── Enhancing spinner ── */}
+      {processing && !enhancedUrl && !submittedSuccess && (
         <Card>
           <CardContent className="p-8 flex flex-col items-center gap-4">
             <Loader2 className="h-10 w-10 animate-spin text-violet-600" />
             <p className="font-medium text-foreground">Mejorando tu imagen con IA...</p>
-            <p className="text-sm text-muted-foreground">Un momento, esto tarda unos segundos</p>
+            <p className="text-sm text-muted-foreground">Esto tarda alrededor de 1 minuto</p>
           </CardContent>
         </Card>
       )}
 
-      {/* Processing: Remotion render */}
-      {renderingAdId && !videoReady && (
-        <Card>
-          <CardContent className="p-8 flex flex-col items-center gap-4">
-            <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="font-medium text-foreground">Generando tu video animado...</p>
-            <p className="text-sm text-muted-foreground">Esto toma ~2 minutos</p>
-          </CardContent>
-        </Card>
-      )}
+      {/* ── Idle: original preview + 2 options ── */}
+      {!processing && !enhancedUrl && !submittedSuccess && (
+        <>
+          {/* Preview of original upload */}
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <img
+                src={previewUrl!}
+                alt="Preview"
+                className="w-full rounded-lg object-cover border border-border"
+                style={{ aspectRatio: "16/9" }}
+              />
+              <Button variant="outline" size="sm" onClick={resetState}>
+                <ArrowLeft className="h-4 w-4 mr-1.5" /> Cambiar foto
+              </Button>
+            </CardContent>
+          </Card>
 
-      {/* Video ready */}
-      {renderingAdId && videoReady && (
-        <Card>
-          <CardContent className="p-4 space-y-4">
-            <p className="text-sm font-medium text-green-700 flex items-center gap-2">
-              ✅ ¡Tu video animado está listo!
-            </p>
-            <video
-              src={(renderingAd as any).final_media_path}
-              controls
-              className="w-full rounded-lg border border-border"
-            />
-            <Button className="w-full gap-2" onClick={handleSubmitRenderedVideo} disabled={submitting}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              Enviar a revisión
-            </Button>
-            <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={resetState}>
-              Cancelar y empezar de nuevo
-            </Button>
-          </CardContent>
-        </Card>
+          {/* Option 1: send as-is, no AI */}
+          <Card className="border-2 border-primary/20">
+            <CardContent className="p-4 space-y-3">
+              <p className="text-sm font-medium text-foreground">¿Tu diseño ya está listo?</p>
+              <p className="text-xs text-muted-foreground">Envíalo directamente para aprobación sin modificar.</p>
+              <Button onClick={handleSubmitImage} disabled={submitting} className="w-full" size="lg">
+                {submitting
+                  ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enviando...</>
+                  : <><Send className="h-4 w-4 mr-2" /> Enviar para aprobación</>
+                }
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-xs text-muted-foreground font-medium px-2">o crea tu anuncio con IA</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+
+          {/* Option 2: AI enhance (Phase 1 of two-phase flow) */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2 text-foreground">
+                <Sparkles className="h-4 w-4 text-violet-600" />
+                Crear anuncio animado con IA
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Mejoramos tu foto, te la mostramos para que apruebes, y luego creamos el video animado.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input
+                value={adBusinessName}
+                onChange={(e) => setAdBusinessName(e.target.value)}
+                placeholder="Nombre del negocio *"
+              />
+              <Input
+                value={adTagline}
+                onChange={(e) => setAdTagline(e.target.value)}
+                placeholder="Texto del anuncio (opcional): ej. Corte $15 esta semana"
+              />
+              <Input
+                value={adCta}
+                onChange={(e) => setAdCta(e.target.value)}
+                placeholder="Call to action: ej. Visítanos · 919-555-0101"
+              />
+              <Button
+                className="w-full gap-2 mt-1"
+                onClick={handleEnhancePhoto}
+                disabled={!adBusinessName.trim()}
+                style={{ background: "linear-gradient(135deg, #7c3aed, #6d28d9)", border: "none" }}
+                size="lg"
+              >
+                <Sparkles className="h-4 w-4" /> Mejorar con IA
+              </Button>
+            </CardContent>
+          </Card>
+        </>
       )}
 
       <p className="text-xs text-muted-foreground text-center pb-4">
