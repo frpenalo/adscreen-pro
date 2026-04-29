@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLang } from "@/contexts/LangContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdvertiserProfile, useSubscription } from "@/hooks/useAdvertiserData";
@@ -16,6 +16,18 @@ const ACCEPTED_VIDEO = ["video/mp4", "video/quicktime"];
 const ALL_ACCEPTED = [...ACCEPTED_IMAGE, ...ACCEPTED_VIDEO];
 const ACCEPT_STRING = ".jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.mov";
 const DEMO_EMAIL = "demo@adscreenpro.com";
+
+// Stages shown during the photo-enhancement wait. `min` is the elapsed
+// second at which a stage becomes the current/active one. Calibrated
+// against the typical generate-ad response time of ~60s — the bar caps
+// before reaching the end so a slightly-slow API doesn't look stuck.
+const ENHANCE_STAGES: Array<{ min: number; label: string; emoji: string }> = [
+  { min: 0,  label: "Analizando tu foto",            emoji: "📸" },
+  { min: 12, label: "Mejorando colores y luz",       emoji: "🎨" },
+  { min: 28, label: "Generando estilo de comercial", emoji: "🎬" },
+  { min: 48, label: "Aplicando últimos detalles",    emoji: "✨" },
+];
+const ENHANCE_TOTAL_SECONDS = 60;
 
 const PLAN_LIMITS: Record<string, { ads: number }> = {
   basico:    { ads: 2 },
@@ -60,6 +72,27 @@ const CreateAdScreen = () => {
   const [enhancedUrl, setEnhancedUrl] = useState<string | null>(null);
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
   const [showDemoModal, setShowDemoModal] = useState(false);
+
+  // ── Enhancement progress (faked-but-believable timeline) ──────────────────
+  // The real generate-ad call doesn't stream progress, so we track elapsed
+  // seconds and show staged messages. The stages are calibrated against
+  // the typical ~60s end-to-end time so the user always feels we're moving
+  // forward. The progress bar caps at 95% on purpose — never reaches 100%
+  // until the actual response arrives, which prevents the "stuck at 100%"
+  // bad UX when the API takes a few extra seconds.
+  const [enhancingSeconds, setEnhancingSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!processing) {
+      setEnhancingSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const id = setInterval(() => {
+      setEnhancingSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 500);
+    return () => clearInterval(id);
+  }, [processing]);
 
   // ── Plan limits ──────────────────────────────────────────────────────────────
   const plan = (profile as any)?.plan ?? "basico";
@@ -578,16 +611,79 @@ const CreateAdScreen = () => {
         </Card>
       )}
 
-      {/* ── Enhancing spinner ── */}
-      {processing && !enhancedUrl && !submittedSuccess && (
-        <Card>
-          <CardContent className="p-8 flex flex-col items-center gap-4">
-            <Loader2 className="h-10 w-10 animate-spin text-violet-600" />
-            <p className="font-medium text-foreground">Mejorando tu imagen con IA...</p>
-            <p className="text-sm text-muted-foreground">Esto tarda alrededor de 1 minuto</p>
-          </CardContent>
-        </Card>
-      )}
+      {/* ── Enhancing: staged progress indicator ── */}
+      {processing && !enhancedUrl && !submittedSuccess && (() => {
+        // Pick the latest stage whose `min` we've passed. Fallback to 0
+        // for the first second before the interval kicks in.
+        const stageIdx = ENHANCE_STAGES.reduce(
+          (acc, s, i) => (enhancingSeconds >= s.min ? i : acc),
+          0
+        );
+        const stage = ENHANCE_STAGES[stageIdx];
+        // Cap progress at 95% so we never look "stuck at done" while we
+        // wait for the actual response.
+        const pct = Math.min(95, (enhancingSeconds / ENHANCE_TOTAL_SECONDS) * 100);
+
+        return (
+          <Card>
+            <CardContent className="p-6 space-y-5">
+              {/* Big animated emoji + current stage label */}
+              <div className="flex flex-col items-center gap-3 pt-2">
+                <div className="text-5xl animate-pulse" aria-hidden>{stage.emoji}</div>
+                <p className="font-semibold text-base text-foreground text-center">
+                  {stage.label}...
+                </p>
+              </div>
+
+              {/* Progress bar */}
+              <div className="space-y-1">
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-violet-500 to-violet-700 transition-all duration-700 ease-out"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground text-right tabular-nums">
+                  {enhancingSeconds}s
+                </p>
+              </div>
+
+              {/* Stages checklist — gives a sense of "we're doing several things" */}
+              <div className="space-y-2 pt-1">
+                {ENHANCE_STAGES.map((s, i) => {
+                  const isDone = i < stageIdx;
+                  const isCurrent = i === stageIdx;
+                  return (
+                    <div
+                      key={s.label}
+                      className={`flex items-center gap-2 text-xs ${
+                        isDone
+                          ? "text-foreground/70"
+                          : isCurrent
+                            ? "text-violet-700 font-medium"
+                            : "text-muted-foreground/40"
+                      }`}
+                    >
+                      {isDone ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                      ) : isCurrent ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-600 flex-shrink-0" />
+                      ) : (
+                        <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/30 flex-shrink-0" />
+                      )}
+                      <span>{s.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="text-xs text-muted-foreground text-center pt-2 border-t border-border">
+                Esto tarda alrededor de 1 minuto. No cierres la página.
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* ── Idle: original preview + 2 options ── */}
       {!processing && !enhancedUrl && !submittedSuccess && (
