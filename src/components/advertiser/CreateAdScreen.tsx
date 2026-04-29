@@ -528,10 +528,35 @@ const CreateAdScreen = () => {
               </div>
             </div>
 
+            {/* Ad copy form — lives here (after the photo is approved) so
+                the user writes the text with the actual visual in mind.
+                Pre-filled from profile.business_name; user can override
+                per-ad. */}
+            <div className="space-y-3 pt-2 border-t border-border">
+              <p className="text-xs font-medium text-foreground">
+                Texto del anuncio
+              </p>
+              <Input
+                value={adBusinessName}
+                onChange={(e) => setAdBusinessName(e.target.value)}
+                placeholder="Nombre del negocio *"
+              />
+              <Input
+                value={adTagline}
+                onChange={(e) => setAdTagline(e.target.value)}
+                placeholder="Tagline (opcional): ej. Corte $15 esta semana"
+              />
+              <Input
+                value={adCta}
+                onChange={(e) => setAdCta(e.target.value)}
+                placeholder="Call to action: ej. Visítanos · 919-555-0101"
+              />
+            </div>
+
             <Button
               className="w-full gap-2"
               onClick={handleSendForRender}
-              disabled={submitting}
+              disabled={submitting || !adBusinessName.trim()}
               size="lg"
               style={{ background: "linear-gradient(135deg, #7c3aed, #6d28d9)", border: "none" }}
             >
@@ -604,6 +629,10 @@ const CreateAdScreen = () => {
           </div>
 
           {/* Option 2: AI enhance (Phase 1 of two-phase flow) */}
+          {/* The text inputs (business name, tagline, CTA) intentionally
+              live in Phase 2 (after the user sees the enhanced photo) so
+              they can write copy inspired by the actual visual. Phase 1
+              is just one click — less form friction, faster start. */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2 text-foreground">
@@ -611,29 +640,13 @@ const CreateAdScreen = () => {
                 Crear anuncio animado con IA
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                Mejoramos tu foto, te la mostramos para que apruebes, y luego creamos el video animado.
+                Mejoramos tu foto y te la mostramos. Si te gusta, escribes el texto del anuncio y lo enviamos a producción.
               </p>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Input
-                value={adBusinessName}
-                onChange={(e) => setAdBusinessName(e.target.value)}
-                placeholder="Nombre del negocio *"
-              />
-              <Input
-                value={adTagline}
-                onChange={(e) => setAdTagline(e.target.value)}
-                placeholder="Texto del anuncio (opcional): ej. Corte $15 esta semana"
-              />
-              <Input
-                value={adCta}
-                onChange={(e) => setAdCta(e.target.value)}
-                placeholder="Call to action: ej. Visítanos · 919-555-0101"
-              />
+            <CardContent>
               <Button
-                className="w-full gap-2 mt-1"
+                className="w-full gap-2"
                 onClick={handleEnhancePhoto}
-                disabled={!adBusinessName.trim()}
                 style={{ background: "linear-gradient(135deg, #7c3aed, #6d28d9)", border: "none" }}
                 size="lg"
               >
