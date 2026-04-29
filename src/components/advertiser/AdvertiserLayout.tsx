@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLang } from "@/contexts/LangContext";
 import { useAdvertiserProfile, useAdvertiserNotifications } from "@/hooks/useAdvertiserData";
-import { LogOut, Bell, Home, PlusCircle, Film, CreditCard, HelpCircle, Map, Menu, X } from "lucide-react";
+import { LogOut, Bell, Home, PlusCircle, Film, CreditCard, HelpCircle, Map, Menu, X, Globe } from "lucide-react";
 import { Link } from "react-router-dom";
 import { NavLink } from "@/components/NavLink";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +27,7 @@ const navItems = [
 
 const AdvertiserLayout = ({ children, currentPage, onPageChange }: AdvertiserLayoutProps) => {
   const { signOut } = useAuth();
-  const { t } = useLang();
+  const { t, lang, setLang } = useLang();
   const { data: profile } = useAdvertiserProfile();
   const { data: notifications } = useAdvertiserNotifications();
   const [showNotifications, setShowNotifications] = useState(false);
@@ -160,6 +160,18 @@ const AdvertiserLayout = ({ children, currentPage, onPageChange }: AdvertiserLay
               </div>
             )}
           </div>
+
+          {/* Language toggle — shows the OTHER language code (clicking switches) */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setLang(lang === "es" ? "en" : "es")}
+            className="gap-1.5 text-muted-foreground"
+            aria-label={lang === "es" ? "Switch to English" : "Cambiar a Español"}
+          >
+            <Globe className="h-4 w-4" />
+            <span className="text-xs font-semibold">{lang === "es" ? "EN" : "ES"}</span>
+          </Button>
 
           <Button variant="ghost" size="sm" onClick={signOut} className="gap-2 text-muted-foreground">
             <LogOut className="h-4 w-4" />
