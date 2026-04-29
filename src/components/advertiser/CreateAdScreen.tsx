@@ -165,6 +165,10 @@ const CreateAdScreen = () => {
 
       const imageBase64 = await toBase64(file);
       const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad`;
+      // NOTE: do NOT send the tagline / business name to the image-enhancing
+      // step. The AI must produce a clean photo with NO text overlays. All
+      // ad copy (headline, tagline, CTA) is composed by Remotion downstream
+      // — the photo is just the visual base.
       const fnRes = await fetch(fnUrl, {
         method: "POST",
         headers: {
@@ -176,7 +180,6 @@ const CreateAdScreen = () => {
           imageBase64,
           mimeType: "image/jpeg",
           category: (profile as any)?.category ?? "",
-          adText: adTagline.trim(),
         }),
       });
       if (!fnRes.ok) {
@@ -487,25 +490,44 @@ const CreateAdScreen = () => {
         </Card>
       )}
 
-      {/* ── Enhanced photo: single approve button ── */}
+      {/* ── Enhanced photo: before/after + single approve button ── */}
       {enhancedUrl && !submittedSuccess && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2 text-foreground">
               <Sparkles className="h-4 w-4 text-violet-600" />
-              Tu foto mejorada con IA
+              Antes y después
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Si te gusta el resultado, presiona Enviar. Crearemos el video animado en el fondo y aparecerá en "Mis Anuncios" cuando esté listo.
+              Compara tu foto original con la versión mejorada por IA. Si te gusta, presiona Enviar — crearemos el video animado en el fondo y aparecerá en "Mis Anuncios" cuando esté listo.
             </p>
           </CardHeader>
-          <CardContent className="p-4 space-y-3">
-            <img
-              src={enhancedUrl}
-              alt="Foto mejorada"
-              className="w-full rounded-lg object-cover border border-border"
-              style={{ aspectRatio: "16/9" }}
-            />
+          <CardContent className="p-4 space-y-4">
+            {/* Before / After grid — original on the left, enhanced on the
+                right so the eye reads the improvement direction naturally */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center">Original</p>
+                <img
+                  src={previewUrl!}
+                  alt="Foto original"
+                  className="w-full rounded-lg object-cover border border-border"
+                  style={{ aspectRatio: "16/9" }}
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-600 text-center flex items-center justify-center gap-1">
+                  <Sparkles className="h-3 w-3" /> Mejorada
+                </p>
+                <img
+                  src={enhancedUrl}
+                  alt="Foto mejorada"
+                  className="w-full rounded-lg object-cover border-2 border-violet-500/40"
+                  style={{ aspectRatio: "16/9" }}
+                />
+              </div>
+            </div>
+
             <Button
               className="w-full gap-2"
               onClick={handleSendForRender}
