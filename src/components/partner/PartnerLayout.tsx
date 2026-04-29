@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLang } from "@/contexts/LangContext";
 import { usePartnerProfile } from "@/hooks/usePartnerData";
-import { LogOut, LayoutDashboard, Users, Wallet, UserCircle, HelpCircle, Menu, Tv } from "lucide-react";
+import { LogOut, LayoutDashboard, Users, Wallet, UserCircle, HelpCircle, Menu, Tv, Globe } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -25,7 +25,7 @@ const navItems = [
 
 const PartnerLayout = ({ children, currentPage, onPageChange }: PartnerLayoutProps) => {
   const { signOut } = useAuth();
-  const { t } = useLang();
+  const { t, lang, setLang } = useLang();
   const { data: profile } = usePartnerProfile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -79,10 +79,23 @@ const PartnerLayout = ({ children, currentPage, onPageChange }: PartnerLayoutPro
             <span className="text-sm text-muted-foreground hidden sm:inline">{profile.business_name}</span>
           )}
         </div>
-        <Button variant="ghost" size="sm" onClick={signOut} className="gap-2 text-muted-foreground">
-          <LogOut className="h-4 w-4" />
-          <span className="hidden sm:inline">{t.dashboard.logout}</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Language toggle — shows the OTHER language code (clicking switches) */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setLang(lang === "es" ? "en" : "es")}
+            className="gap-1.5 text-muted-foreground"
+            aria-label={lang === "es" ? "Switch to English" : "Cambiar a Español"}
+          >
+            <Globe className="h-4 w-4" />
+            <span className="text-xs font-semibold">{lang === "es" ? "EN" : "ES"}</span>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={signOut} className="gap-2 text-muted-foreground">
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">{t.dashboard.logout}</span>
+          </Button>
+        </div>
       </header>
 
       <div className="flex flex-1">
