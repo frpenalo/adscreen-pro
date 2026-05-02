@@ -116,14 +116,24 @@ Deno.serve(async (req) => {
       throw new Error(`GoAffPro error ${goaffproRes.status}: ${JSON.stringify(responseJson)}`);
     }
 
-    // Save to partner record
-    await adminClient
-      .from("partners")
-      .update({
-        goaffpro_affiliate_id: affiliateId,
-        goaffpro_referral_link: referralLink,
-      })
-      .eq("id", user.id);
+    // Save to partner record.
+    //
+    // BUG FIX: never overwrite an existing goaffpro_referral_link with null.
+    // Two paths above can leave `referralLink` as null:
+    //   1. The "already registered" branch (line 90-94) intentionally sets
+    //      it to null because the ref_code is fetched later by sync-...
+    //   2. The "freshly created" branch may not get a ref_code back from
+    //      the GET call right away.
+    // Either way, if a previous run already saved a valid link to the row,
+    // we must NOT clobber it with null. Only include the link in the
+    // UPDATE payload when we have a fresh non-null value.
+    const updates: Record<string, any> = {
+      goaffpro_affiliate_id: affiliateId,
+    };
+    if (referralLink) {
+      updates.goaffpro_referral_link = referralLink;
+    }
+    await adminClient.from("partners").update(updates).eq("id", user.id);
 
     return new Response(JSON.stringify({
       success: true,
