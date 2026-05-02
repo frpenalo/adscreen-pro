@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePartnerProfile } from "@/hooks/usePartnerData";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,12 +8,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Upload, Sparkles, Send, Loader2, Film, Trash2, Clock, CheckCircle, XCircle, Video, ArrowLeft } from "lucide-react";
+import { Upload, Sparkles, Send, Loader2, Film, Trash2, Clock, CheckCircle, XCircle, ArrowLeft, CheckCircle2, ListChecks } from "lucide-react";
 
 const MAX_SLOTS = 3;
 const ACCEPTED_IMAGE = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 const ACCEPTED_VIDEO = ["video/mp4", "video/quicktime", "video/webm", "video/mov"];
 const ACCEPT_STRING = "image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,.jpg,.jpeg,.png,.webp,.mp4,.mov,.webm";
+
+// Stages shown during the photo-enhancement wait. `min` is the elapsed
+// second at which a stage becomes the current/active one. Calibrated
+// against the typical generate-ad response time of ~60s — the bar caps
+// before reaching the end so a slightly-slow API doesn't look stuck.
+// (Mirrors the advertiser CreateAdScreen flow — same generate-ad function,
+// same expected timing.)
+const ENHANCE_STAGES: Array<{ min: number; label: string; emoji: string }> = [
+  { min: 0,  label: "Analizando tu foto",            emoji: "📸" },
+  { min: 12, label: "Mejorando colores y luz",       emoji: "🎨" },
+  { min: 28, label: "Generando estilo de comercial", emoji: "🎬" },
+  { min: 48, label: "Aplicando últimos detalles",    emoji: "✨" },
+];
+const ENHANCE_TOTAL_SECONDS = 60;
 
 const usePartnerAds = (partnerId: string | undefined) =>
   useQuery({
@@ -55,6 +69,9 @@ const PartnerAdsScreen = () => {
   const [fileType, setFileType] = useState<"image" | "video">("image");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Press-and-hold compare on the enhanced-photo card. While true, the
+  // preview swaps to the original photo so the user can A/B with one tap.
+  const [showingOriginal, setShowingOriginal] = useState(false);
 
   // ── Ad text fields ─────────────────────────────────────────────────────────
   const [businessName, setBusinessName] = useState("");
@@ -62,23 +79,37 @@ const PartnerAdsScreen = () => {
   const [cta, setCta] = useState("Visítanos");
 
   // ── Processing state ───────────────────────────────────────────────────────
-  const [processing, setProcessing] = useState(false);   // AI enhance + render trigger
-  const [submitting, setSubmitting] = useState(false);    // direct submit
-  const [renderingAdId, setRenderingAdId] = useState<string | null>(null);
+  // Two-phase flow (matches advertiser CreateAdScreen):
+  //   1. processing       — calling generate-ad to enhance the photo
+  //   2. enhancedUrl set  — show enhanced photo, ad-text form, single Send button
+  //   3. submitting       — inserting ad row + dispatching Remotion render
+  //   4. submittedSuccess — final state, partner is done; render runs in the
+  //                         background, partner sees finished video in the
+  //                         "Tus anuncios" list above once it's ready and the
+  //                         admin has approved it.
+  const [processing, setProcessing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [enhancedUrl, setEnhancedUrl] = useState<string | null>(null);
+  const [submittedSuccess, setSubmittedSuccess] = useState(false);
 
-  // ── Poll for rendered video ────────────────────────────────────────────────
-  const { data: renderingAd } = useQuery({
-    queryKey: ["rendering-ad-partner", renderingAdId],
-    queryFn: async () => {
-      const { data } = await supabase.from("ads").select("*").eq("id", renderingAdId!).single();
-      return data;
-    },
-    enabled: !!renderingAdId,
-    refetchInterval: (query) => {
-      const d = query.state.data as any;
-      return d?.final_media_path ? false : 5000;
-    },
-  });
+  // ── Enhancement progress (faked-but-believable timeline) ──────────────────
+  // generate-ad doesn't stream progress, so we track elapsed seconds and
+  // show staged messages. The bar caps at 95% on purpose — never reaches
+  // 100% until the actual response arrives, which prevents the "stuck at
+  // 100%" bad UX when the API takes a few extra seconds.
+  const [enhancingSeconds, setEnhancingSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!processing) {
+      setEnhancingSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const id = setInterval(() => {
+      setEnhancingSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 500);
+    return () => clearInterval(id);
+  }, [processing]);
 
   const slotsUsed = ads.length;
   const slotsLeft = Math.max(0, MAX_SLOTS - slotsUsed);
@@ -159,8 +190,11 @@ const PartnerAdsScreen = () => {
       img.src = url;
     });
 
-  // ── Unified: AI enhance → animated video ──────────────────────────────────
-  const handleCreateAd = async () => {
+  // ── Phase 1: AI-enhance the photo ─────────────────────────────────────────
+  // Calls generate-ad which improves the uploaded image. We keep the URL in
+  // `enhancedUrl` and show the partner a preview; they then add ad copy and
+  // approve sending it for rendering+publication in Phase 2.
+  const handleEnhancePhoto = async () => {
     if (!file || !user || processing) return;
     if (slotsLeft <= 0) {
       toast({ title: "Alcanzaste el límite de 3 anuncios locales.", variant: "destructive" });
@@ -172,9 +206,11 @@ const PartnerAdsScreen = () => {
       const token = sessionData.session?.access_token;
       if (!token) throw new Error("No session");
 
-      // Step 1 — AI enhance (category drives the style)
       const imageBase64 = await toBase64(file);
       const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad`;
+      // NOTE: do NOT send tagline / business name to the image-enhancing
+      // step. The AI must produce a clean photo with NO text overlays. All
+      // ad copy (headline, tagline, CTA) is composed by Remotion downstream.
       const fnRes = await fetch(fnUrl, {
         method: "POST",
         headers: {
@@ -186,7 +222,6 @@ const PartnerAdsScreen = () => {
           imageBase64,
           mimeType: "image/jpeg",
           category: (profile as any)?.category ?? "",
-          adText: tagline.trim(),
         }),
       });
       if (!fnRes.ok) {
@@ -195,22 +230,49 @@ const PartnerAdsScreen = () => {
       }
       const aiRes = await fnRes.json();
       if (!aiRes.imageUrl) throw new Error("La IA no devolvió imagen. Intenta de nuevo.");
+      setEnhancedUrl(aiRes.imageUrl);
+    } catch (e: any) {
+      toast({ title: e.message || "Error al mejorar la imagen", variant: "destructive" });
+    } finally {
+      setProcessing(false);
+    }
+  };
 
-      // Step 2 — Insert ad record + trigger Remotion render
+  // ── Phase 2: Send for render + admin review ───────────────────────────────
+  // Partner approved the enhanced photo. We:
+  //   1. Insert the ad row in `draft` status (admin queue)
+  //   2. Dispatch the Remotion render in the background
+  //   3. Notify the admin
+  //   4. Show the success state — partner is done; can navigate away.
+  // The Remotion render runs out-of-band and updates the ad row when done.
+  // The partner sees the finished video in "Tus anuncios" once admin
+  // approves it. (The ad_status enum allows draft/approved/published/
+  // rejected — same as direct image/video paths.)
+  const handleSendForRender = async () => {
+    if (!user || !enhancedUrl || submitting) return;
+    setSubmitting(true);
+    try {
+      const { data: sessionData } = await supabase.auth.refreshSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("No session");
+
       const { data: adData, error: insertErr } = await supabase
         .from("ads")
         .insert({
           advertiser_id: user.id,
-          screen_id: user.id,
+          screen_id: user.id,                        // partner ad → only on their own screen
           type: "video",
           final_media_path: "",
           status: "draft",
+          metadata: { photo_url: enhancedUrl },
         } as any)
         .select("id")
         .single();
       if (insertErr) throw insertErr;
-
       const adId = (adData as any).id;
+
+      // Dispatch Remotion render. Returns immediately — the workflow runs on
+      // GitHub Actions and updates the ad's final_media_path when finished.
       const videoFnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad-video`;
       await fetch(videoFnUrl, {
         method: "POST",
@@ -221,7 +283,7 @@ const PartnerAdsScreen = () => {
         },
         body: JSON.stringify({
           ad_id: adId,
-          photo_url: aiRes.imageUrl,
+          photo_url: enhancedUrl,
           business_name: businessName.trim() || profile.business_name || "",
           tagline: tagline.trim(),
           cta: cta.trim(),
@@ -230,12 +292,17 @@ const PartnerAdsScreen = () => {
         }),
       });
 
-      setRenderingAdId(adId);
-      toast({ title: "¡Procesando tu anuncio! Listo en ~2 minutos." });
+      await supabase.from("admin_notifications").insert({
+        type: "new_ad",
+        message: `Video animado pendiente de revisión de ${profile.business_name ?? "un partner"}.`,
+      });
+
+      setSubmittedSuccess(true);
+      queryClient.invalidateQueries({ queryKey: ["partner-local-ads"] });
     } catch (e: any) {
-      toast({ title: e.message || "Error al crear el anuncio", variant: "destructive" });
+      toast({ title: e.message || "Error al enviar el anuncio", variant: "destructive" });
     } finally {
-      setProcessing(false);
+      setSubmitting(false);
     }
   };
 
@@ -312,26 +379,6 @@ const PartnerAdsScreen = () => {
     }
   };
 
-  // ── Submit rendered video ──────────────────────────────────────────────────
-  const handleSubmitRenderedVideo = async () => {
-    if (!renderingAd || !user || submitting) return;
-    setSubmitting(true);
-    try {
-      await supabase.from("ads").update({ status: "pending" }).eq("id", (renderingAd as any).id);
-      await supabase.from("admin_notifications").insert({
-        type: "new_ad",
-        message: `Video animado pendiente de revisión de ${profile.business_name ?? "un partner"}.`,
-      });
-      toast({ title: "Video enviado a revisión" });
-      queryClient.invalidateQueries({ queryKey: ["partner-local-ads"] });
-      resetState();
-    } catch (e: any) {
-      toast({ title: e.message, variant: "destructive" });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleDelete = async (adId: string) => {
     const { error: delErr } = await supabase.from("ads").delete().eq("id", adId);
     if (delErr) toast({ title: delErr.message, variant: "destructive" });
@@ -350,11 +397,11 @@ const PartnerAdsScreen = () => {
     setTagline("");
     setCta("Visítanos");
     setProcessing(false);
-    setRenderingAdId(null);
+    setEnhancedUrl(null);
+    setSubmittedSuccess(false);
+    setShowingOriginal(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
-
-  const videoReady = !!(renderingAd as any)?.final_media_path;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -460,133 +507,286 @@ const PartnerAdsScreen = () => {
             </Card>
           )}
 
-          {/* STEP 2b: Image selected */}
+          {/* STEP 2b: Image — two-phase flow ───────────────────────────────────
+              States, in order:
+                submittedSuccess === true  → "¡Listo! Te avisamos cuando esté en pantallas."
+                enhancedUrl !== null       → enhanced photo + form + Send
+                processing === true        → staged progress indicator
+                else (idle)                → original preview + 2 options
+          */}
           {file && fileType === "image" && (
             <div className="space-y-4">
 
-              {/* Preview */}
-              <Card>
-                <CardContent className="p-4 space-y-3">
-                  <img src={previewUrl!} alt="Preview" className="w-full rounded-lg object-cover border border-border" style={{ aspectRatio: "16/9" }} />
-                  {!processing && !renderingAdId && (
-                    <Button variant="outline" size="sm" onClick={resetState}>
-                      <ArrowLeft className="h-4 w-4 mr-1.5" /> Cambiar foto
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Option 1: Send as-is */}
-              {!processing && !renderingAdId && (
-                <Card className="border-2 border-primary/20">
-                  <CardContent className="p-4 space-y-3">
-                    <p className="text-sm font-medium">¿Tu diseño ya está listo?</p>
-                    <p className="text-xs text-muted-foreground">Envíalo directamente sin modificar.</p>
-                    <Button onClick={handleSubmitImage} disabled={submitting} className="w-full" size="lg">
-                      {submitting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enviando...</> : <><Send className="h-4 w-4 mr-2" /> Enviar para aprobación</>}
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Divider */}
-              {!processing && !renderingAdId && (
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-xs text-muted-foreground font-medium">o crea un video animado</span>
-                  <div className="flex-1 h-px bg-border" />
-                </div>
-              )}
-
-              {/* Option 2: Animated video with AI */}
-              {!renderingAdId && (
-                <Card className="border-2 border-accent/30">
-                  <CardContent className="p-4 space-y-3">
-
-                    {!processing && (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-primary" />
-                          <p className="text-sm font-medium">Crear anuncio animado con IA</p>
-                        </div>
-                        <p className="text-xs text-muted-foreground">La IA mejora tu foto y crea un video de 10 segundos optimizado para TV.</p>
-
-                        <Input
-                          value={businessName}
-                          onChange={(e) => setBusinessName(e.target.value)}
-                          placeholder="Nombre del negocio"
-                          className="text-sm"
-                        />
-                        <Input
-                          value={tagline}
-                          onChange={(e) => setTagline(e.target.value)}
-                          placeholder="Tagline (ej. El mejor corte de la ciudad)"
-                          className="text-sm"
-                        />
-                        <Input
-                          value={cta}
-                          onChange={(e) => setCta(e.target.value)}
-                          placeholder="Call to action (ej. Visítanos)"
-                          className="text-sm"
-                        />
-                      </>
-                    )}
-
-                    {/* Processing states */}
-                    {processing && (
-                      <div className="flex flex-col items-center gap-3 py-4">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        <p className="text-sm font-medium text-foreground">Mejorando imagen con IA...</p>
-                        <p className="text-xs text-muted-foreground">Esto toma unos segundos</p>
-                      </div>
-                    )}
-
-                    {!processing && (
-                      <Button
-                        className="w-full gap-2"
-                        size="lg"
-                        onClick={handleCreateAd}
-                        disabled={processing || !businessName.trim()}
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        Crear anuncio animado con IA
+              {/* ── Final state: ad submitted, partner is done ── */}
+              {submittedSuccess && (
+                <Card className="border-2 border-green-500/30">
+                  <CardContent className="p-8 flex flex-col items-center text-center gap-5">
+                    <CheckCircle2 className="h-14 w-14 text-green-600" />
+                    <div className="space-y-2">
+                      <h3 className="font-semibold text-lg text-foreground">¡Anuncio enviado!</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        Estamos creando tu video animado en el fondo. Cuando esté listo y aprobado, lo verás arriba en <strong>Tus anuncios</strong> y aparecerá automáticamente en la pantalla de tu local.
+                      </p>
+                      <p className="text-xs text-muted-foreground pt-1">
+                        No necesitas esperar acá. Puedes cerrar esta página o crear otro anuncio.
+                      </p>
+                    </div>
+                    {slotsLeft > 1 ? (
+                      <Button onClick={resetState} className="w-full gap-2" size="lg">
+                        <Sparkles className="h-4 w-4" /> Crear otro anuncio
+                      </Button>
+                    ) : (
+                      <Button onClick={resetState} variant="outline" className="w-full" size="lg">
+                        Cerrar
                       </Button>
                     )}
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <ListChecks className="h-3.5 w-3.5" />
+                      Revisa el progreso en "Tus anuncios" arriba
+                    </p>
                   </CardContent>
                 </Card>
               )}
 
-              {/* Rendering in progress */}
-              {renderingAdId && !videoReady && (
+              {/* ── Enhanced photo: before/after + form + Send ── */}
+              {enhancedUrl && !submittedSuccess && (
                 <Card>
-                  <CardContent className="p-4">
-                    <div className="flex flex-col items-center gap-3 py-4">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                      <p className="text-sm font-medium text-foreground">Generando tu anuncio...</p>
-                      <p className="text-xs text-muted-foreground">Esto toma ~2 minutos. Puedes esperar aquí.</p>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2 text-foreground">
+                      <Sparkles className="h-4 w-4 text-violet-600" />
+                      Antes y después
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Compara tu foto original con la versión mejorada. Si te gusta, completa el texto y presiona Enviar — crearemos el video animado en el fondo.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-4">
+                    {/* Single large preview — shows the enhanced photo by
+                        default, reveals the original ONLY while the button
+                        below is pressed. Cleaner than a side-by-side grid:
+                        the partner sees the polished result first. */}
+                    <div className="relative">
+                      <img
+                        src={showingOriginal ? previewUrl! : enhancedUrl!}
+                        alt={showingOriginal ? "Foto original" : "Foto mejorada"}
+                        className={`w-full rounded-lg object-cover transition-all ${
+                          showingOriginal ? "border border-border" : "border-2 border-violet-500/40"
+                        }`}
+                        style={{ aspectRatio: "16/9" }}
+                        draggable={false}
+                      />
+                      <div className={`absolute top-2 left-2 px-2 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1 ${
+                        showingOriginal
+                          ? "bg-black/60 text-white"
+                          : "bg-violet-600 text-white"
+                      }`}>
+                        {showingOriginal ? "Original" : <><Sparkles className="h-3 w-3" /> Mejorada</>}
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
 
-              {/* Video ready */}
-              {renderingAdId && videoReady && (
-                <Card className="border-2 border-green-200">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-green-700">
-                      <CheckCircle className="h-4 w-4" />
-                      <p className="text-sm font-medium">¡Tu video está listo!</p>
+                    {/* Press-and-hold compare button. Mouse for desktop,
+                        touch for mobile. onMouseLeave covers cursor leaving
+                        the button while still pressed. */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full select-none"
+                      onMouseDown={() => setShowingOriginal(true)}
+                      onMouseUp={() => setShowingOriginal(false)}
+                      onMouseLeave={() => setShowingOriginal(false)}
+                      onTouchStart={(e) => { e.preventDefault(); setShowingOriginal(true); }}
+                      onTouchEnd={() => setShowingOriginal(false)}
+                      onTouchCancel={() => setShowingOriginal(false)}
+                    >
+                      Mantén presionado para ver el original
+                    </Button>
+
+                    {/* Ad copy form — lives here (after photo approval) so
+                        the partner writes text with the actual visual in
+                        mind. Pre-filled from profile.business_name. */}
+                    <div className="space-y-3 pt-2 border-t border-border">
+                      <p className="text-xs font-medium text-foreground">
+                        Texto del anuncio
+                      </p>
+                      <Input
+                        value={businessName}
+                        onChange={(e) => setBusinessName(e.target.value)}
+                        placeholder="Nombre del negocio *"
+                        className="text-sm"
+                      />
+                      <Input
+                        value={tagline}
+                        onChange={(e) => setTagline(e.target.value)}
+                        placeholder="Tagline (opcional): ej. El mejor corte de la ciudad"
+                        className="text-sm"
+                      />
+                      <Input
+                        value={cta}
+                        onChange={(e) => setCta(e.target.value)}
+                        placeholder="Call to action: ej. Visítanos · 919-555-0101"
+                        className="text-sm"
+                      />
                     </div>
-                    <video
-                      src={(renderingAd as any).final_media_path}
-                      controls
-                      className="w-full rounded-lg border"
-                    />
-                    <Button className="w-full gap-2" onClick={handleSubmitRenderedVideo} disabled={submitting}>
-                      {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</> : <><Send className="h-4 w-4" /> Enviar a revisión</>}
+
+                    <Button
+                      className="w-full gap-2"
+                      onClick={handleSendForRender}
+                      disabled={submitting || !businessName.trim()}
+                      size="lg"
+                      style={{ background: "linear-gradient(135deg, #7c3aed, #6d28d9)", border: "none" }}
+                    >
+                      {submitting
+                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</>
+                        : <><Send className="h-4 w-4" /> Enviar</>
+                      }
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-muted-foreground"
+                      onClick={resetState}
+                      disabled={submitting}
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-1.5" /> Empezar de nuevo
                     </Button>
                   </CardContent>
                 </Card>
+              )}
+
+              {/* ── Enhancing: staged progress indicator ── */}
+              {processing && !enhancedUrl && !submittedSuccess && (() => {
+                const stageIdx = ENHANCE_STAGES.reduce(
+                  (acc, s, i) => (enhancingSeconds >= s.min ? i : acc),
+                  0
+                );
+                const stage = ENHANCE_STAGES[stageIdx];
+                // Cap at 95% — never reach 100% until the API actually responds.
+                const pct = Math.min(95, (enhancingSeconds / ENHANCE_TOTAL_SECONDS) * 100);
+
+                return (
+                  <Card>
+                    <CardContent className="p-6 space-y-5">
+                      <div className="flex flex-col items-center gap-3 pt-2">
+                        <div className="text-5xl animate-pulse" aria-hidden>{stage.emoji}</div>
+                        <p className="font-semibold text-base text-foreground text-center">
+                          {stage.label}...
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-violet-500 to-violet-700 transition-all duration-700 ease-out"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <p className="text-[10px] text-muted-foreground text-right tabular-nums">
+                          {enhancingSeconds}s
+                        </p>
+                      </div>
+
+                      <div className="space-y-2 pt-1">
+                        {ENHANCE_STAGES.map((s, i) => {
+                          const isDone = i < stageIdx;
+                          const isCurrent = i === stageIdx;
+                          return (
+                            <div
+                              key={s.label}
+                              className={`flex items-center gap-2 text-xs ${
+                                isDone
+                                  ? "text-foreground/70"
+                                  : isCurrent
+                                    ? "text-violet-700 font-medium"
+                                    : "text-muted-foreground/40"
+                              }`}
+                            >
+                              {isDone ? (
+                                <CheckCircle2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                              ) : isCurrent ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-600 flex-shrink-0" />
+                              ) : (
+                                <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/30 flex-shrink-0" />
+                              )}
+                              <span>{s.label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <p className="text-xs text-muted-foreground text-center pt-2 border-t border-border">
+                        Esto tarda alrededor de 1 minuto. No cierres la página.
+                      </p>
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+
+              {/* ── Idle: original preview + 2 options ── */}
+              {!processing && !enhancedUrl && !submittedSuccess && (
+                <>
+                  {/* Preview of original upload */}
+                  <Card>
+                    <CardContent className="p-4 space-y-3">
+                      <img
+                        src={previewUrl!}
+                        alt="Preview"
+                        className="w-full rounded-lg object-cover border border-border"
+                        style={{ aspectRatio: "16/9" }}
+                      />
+                      <Button variant="outline" size="sm" onClick={resetState}>
+                        <ArrowLeft className="h-4 w-4 mr-1.5" /> Cambiar foto
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Option 1: send as-is, no AI */}
+                  <Card className="border-2 border-primary/20">
+                    <CardContent className="p-4 space-y-3">
+                      <p className="text-sm font-medium text-foreground">¿Tu diseño ya está listo?</p>
+                      <p className="text-xs text-muted-foreground">Envíalo directamente sin modificar.</p>
+                      <Button onClick={handleSubmitImage} disabled={submitting} className="w-full" size="lg">
+                        {submitting
+                          ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enviando...</>
+                          : <><Send className="h-4 w-4 mr-2" /> Enviar para aprobación</>
+                        }
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Divider */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-xs text-muted-foreground font-medium px-2">o crea un video animado</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+
+                  {/* Option 2: AI enhance (Phase 1 of two-phase flow). Text
+                      inputs (business name, tagline, CTA) intentionally
+                      live in Phase 2 (after enhanced photo) so partner
+                      writes copy inspired by the visual. Phase 1 is just
+                      one click — less form friction, faster start. */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2 text-foreground">
+                        <Sparkles className="h-4 w-4 text-violet-600" />
+                        Crear anuncio animado con IA
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Mejoramos tu foto y te la mostramos. Si te gusta, escribes el texto del anuncio y lo enviamos a producción.
+                      </p>
+                    </CardHeader>
+                    <CardContent>
+                      <Button
+                        className="w-full gap-2"
+                        onClick={handleEnhancePhoto}
+                        style={{ background: "linear-gradient(135deg, #7c3aed, #6d28d9)", border: "none" }}
+                        size="lg"
+                      >
+                        <Sparkles className="h-4 w-4" /> Mejorar con IA
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </>
               )}
 
             </div>
