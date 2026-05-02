@@ -143,6 +143,35 @@ const PartnersScreen = () => {
       } catch {
         // non-critical — render failure doesn't block approval
       }
+
+      // 4. Auto-publicar todos los productos activos a la pantalla del partner
+      //    Sin esto, partners nuevos quedaban con la pantalla vacía hasta que
+      //    el admin re-publicaba cada producto manualmente. Depende del paso 1
+      //    (sync-goaffpro-affiliate) porque cada producto se publica con la
+      //    URL afiliada partner.goaffpro_referral_link.
+      try {
+        const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/publish-products-to-partner`;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        const pubRes = await fetch(fnUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ partner_id: id }),
+        });
+        if (pubRes.ok) {
+          const pubJson = await pubRes.json().catch(() => ({}));
+          const n = (pubJson as any)?.published ?? 0;
+          if (n > 0) {
+            toast.info(`${n} productos agregados a su pantalla`);
+          }
+        }
+      } catch {
+        // non-critical — admin can re-publish products manually later
+      }
     }
 
     setActionPartner(null);
