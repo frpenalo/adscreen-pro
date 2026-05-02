@@ -144,6 +144,8 @@ REQUIRED OUTPUT: Only the prompt text in English.`;
       `Instruction: Analyze the provided image. Identify the central subject and reimagine it using the specified style, maintaining the original composition but elevating it to a high-end TV commercial look.`,
     ].join("\n\n");
 
+    const step1StartedAt = Date.now();
+    console.log(`[generate-ad] Step 1: posting to GPT-4o. Image base64 length: ${imageBase64.length}, mimeType: ${mimeType}, category: ${category}`);
     const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -178,15 +180,19 @@ REQUIRED OUTPUT: Only the prompt text in English.`;
 
     const gptData = await gptResponse.json();
     const generatedPrompt = gptData.choices?.[0]?.message?.content?.trim() ?? "";
-    console.log("GPT-4o prompt:", generatedPrompt.slice(0, 200));
+    const step1Ms = Date.now() - step1StartedAt;
+    console.log(`[generate-ad] Step 1 (GPT-4o) done in ${step1Ms}ms. Prompt: ${generatedPrompt.slice(0, 200)}`);
 
     // ── Step 2: gpt-image-2 transforms the image ─────────────────────────────
     // OpenAI's /v1/images/edits endpoint takes the original photo as a
     // multipart upload + a text prompt describing the transformation.
     // Returns one (or more) generated images as base64. We request
-    // 1536x1024 (landscape ~3:2) — closest to 16:9 in OpenAI's allowed
-    // sizes; the Remotion render later composes the final 1920x1080
-    // video so a small aspect mismatch is fine.
+    // 1024x1024 (square) at quality "low" — fastest combination. The
+    // Remotion render later composes the final 1920x1080 video so the
+    // aspect ratio at this stage doesn't matter for the final output.
+    // Speed matters because Supabase Edge Functions have a wall-clock
+    // limit (typically 25-150s depending on plan); a slower
+    // gpt-image-2 call risked the connection dropping mid-flight.
     const userPrompt = `Completely reimagine this photo as a high-budget professional TV commercial. DO NOT add text or graphics on top of the original photo — fully transform the scene.
 
 ${generatedPrompt}
@@ -198,27 +204,57 @@ CRITICAL: Create a completely new commercial image. Do NOT overlay graphics or s
     // boundary headers automatically.
     const imageBytes = Uint8Array.from(atob(imageBase64), (c) => c.charCodeAt(0));
     const imageBlob = new Blob([imageBytes], { type: mimeType || "image/jpeg" });
+    console.log(`[generate-ad] Step 2: posting to gpt-image-1. Image bytes: ${imageBytes.length}`);
 
     const formData = new FormData();
-    formData.append("model", "gpt-image-2");
+    // Using gpt-image-1 instead of gpt-image-2 — gpt-image-2 requires
+    // OpenAI organization verification (KYC), which we haven't completed.
+    // gpt-image-1 is available without verification, ~3x cheaper, and
+    // produces clearly better output than the old nano-banana-2 we
+    // came from. When the org verification finishes we can flip this
+    // string to "gpt-image-2" for the latest quality.
+    formData.append("model", "gpt-image-1");
     formData.append("image", imageBlob, "input.jpg");
     formData.append("prompt", userPrompt);
-    formData.append("size", "1536x1024");
+    formData.append("size", "1024x1024");
+    formData.append("quality", "low");
     formData.append("n", "1");
 
-    const apiResponse = await fetch("https://api.openai.com/v1/images/edits", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openaiKey}`,
-        // Content-Type is intentionally omitted so the browser/runtime
-        // sets it to multipart/form-data with the correct boundary.
-      },
-      body: formData,
-    });
+    const step2StartedAt = Date.now();
+    // Hard timeout via AbortController so we never let the request hang
+    // forever — if gpt-image-2 takes more than 90s, abort and surface
+    // a clear error to the client instead of letting the edge function
+    // run out of wall clock.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90_000);
+    let apiResponse: Response;
+    try {
+      apiResponse = await fetch("https://api.openai.com/v1/images/edits", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${openaiKey}`,
+          // Content-Type is intentionally omitted so the runtime sets
+          // multipart/form-data with the correct boundary.
+        },
+        body: formData,
+        signal: controller.signal,
+      });
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if ((e as Error).name === "AbortError") {
+        console.error("[generate-ad] gpt-image-1 timed out after 90s");
+        throw new Error("gpt-image-1 timed out after 90s. Try a smaller / simpler photo.");
+      }
+      throw e;
+    }
+    clearTimeout(timeoutId);
+
+    const step2Ms = Date.now() - step2StartedAt;
+    console.log(`[generate-ad] Step 2 (gpt-image-1) responded in ${step2Ms}ms with status ${apiResponse.status}`);
 
     if (!apiResponse.ok) {
       const errText = await apiResponse.text();
-      console.error("OpenAI image edit error:", apiResponse.status, errText);
+      console.error("[generate-ad] OpenAI image edit error:", apiResponse.status, errText);
       throw new Error(`OpenAI image edit error ${apiResponse.status}: ${errText}`);
     }
 
@@ -229,9 +265,10 @@ CRITICAL: Create a completely new commercial image. Do NOT overlay graphics or s
     const imageMime = "image/png";
 
     if (!imageData) {
-      console.error("No image in OpenAI response:", JSON.stringify(data).slice(0, 1000));
+      console.error("[generate-ad] No image in OpenAI response:", JSON.stringify(data).slice(0, 1000));
       throw new Error("OpenAI did not return an image. Try a different prompt.");
     }
+    console.log(`[generate-ad] Step 2 image received, b64 length: ${imageData.length}`);
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
