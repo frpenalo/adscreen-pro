@@ -204,10 +204,16 @@ CRITICAL: Create a completely new commercial image. Do NOT overlay graphics or s
     // boundary headers automatically.
     const imageBytes = Uint8Array.from(atob(imageBase64), (c) => c.charCodeAt(0));
     const imageBlob = new Blob([imageBytes], { type: mimeType || "image/jpeg" });
-    console.log(`[generate-ad] Step 2: posting to gpt-image-2. Image bytes: ${imageBytes.length}`);
+    console.log(`[generate-ad] Step 2: posting to gpt-image-1. Image bytes: ${imageBytes.length}`);
 
     const formData = new FormData();
-    formData.append("model", "gpt-image-2");
+    // Using gpt-image-1 instead of gpt-image-2 — gpt-image-2 requires
+    // OpenAI organization verification (KYC), which we haven't completed.
+    // gpt-image-1 is available without verification, ~3x cheaper, and
+    // produces clearly better output than the old nano-banana-2 we
+    // came from. When the org verification finishes we can flip this
+    // string to "gpt-image-2" for the latest quality.
+    formData.append("model", "gpt-image-1");
     formData.append("image", imageBlob, "input.jpg");
     formData.append("prompt", userPrompt);
     formData.append("size", "1024x1024");
@@ -236,15 +242,15 @@ CRITICAL: Create a completely new commercial image. Do NOT overlay graphics or s
     } catch (e) {
       clearTimeout(timeoutId);
       if ((e as Error).name === "AbortError") {
-        console.error("[generate-ad] gpt-image-2 timed out after 90s");
-        throw new Error("gpt-image-2 timed out after 90s. Try a smaller / simpler photo.");
+        console.error("[generate-ad] gpt-image-1 timed out after 90s");
+        throw new Error("gpt-image-1 timed out after 90s. Try a smaller / simpler photo.");
       }
       throw e;
     }
     clearTimeout(timeoutId);
 
     const step2Ms = Date.now() - step2StartedAt;
-    console.log(`[generate-ad] Step 2 (gpt-image-2) responded in ${step2Ms}ms with status ${apiResponse.status}`);
+    console.log(`[generate-ad] Step 2 (gpt-image-1) responded in ${step2Ms}ms with status ${apiResponse.status}`);
 
     if (!apiResponse.ok) {
       const errText = await apiResponse.text();
