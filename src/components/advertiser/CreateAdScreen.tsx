@@ -49,6 +49,9 @@ const CreateAdScreen = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<MediaType>(null);
   const [error, setError] = useState<string | null>(null);
+  // Press-and-hold compare on the enhanced-photo card. While true, the
+  // preview swaps to the original photo so the user can A/B with one tap.
+  const [showingOriginal, setShowingOriginal] = useState(false);
 
   // ── Ad creation state ────────────────────────────────────────────────────────
   const [adBusinessName, setAdBusinessName] = useState("");
@@ -536,30 +539,48 @@ const CreateAdScreen = () => {
             </p>
           </CardHeader>
           <CardContent className="p-4 space-y-4">
-            {/* Before / After grid — original on the left, enhanced on the
-                right so the eye reads the improvement direction naturally */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center">Original</p>
-                <img
-                  src={previewUrl!}
-                  alt="Foto original"
-                  className="w-full rounded-lg object-cover border border-border"
-                  style={{ aspectRatio: "16/9" }}
-                />
-              </div>
-              <div className="space-y-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-600 text-center flex items-center justify-center gap-1">
-                  <Sparkles className="h-3 w-3" /> Mejorada
-                </p>
-                <img
-                  src={enhancedUrl}
-                  alt="Foto mejorada"
-                  className="w-full rounded-lg object-cover border-2 border-violet-500/40"
-                  style={{ aspectRatio: "16/9" }}
-                />
+            {/* Single large preview — shows the enhanced photo by default,
+                and reveals the original ONLY while the button below is
+                pressed. Cleaner than a side-by-side grid: the user sees
+                the polished result first, then can dip into the original
+                for comparison without losing focus on the final output. */}
+            <div className="relative">
+              <img
+                src={showingOriginal ? previewUrl! : enhancedUrl!}
+                alt={showingOriginal ? "Foto original" : "Foto mejorada"}
+                className={`w-full rounded-lg object-cover transition-all ${
+                  showingOriginal ? "border border-border" : "border-2 border-violet-500/40"
+                }`}
+                style={{ aspectRatio: "16/9" }}
+                draggable={false}
+              />
+              {/* Floating label so the user always knows which version they're looking at */}
+              <div className={`absolute top-2 left-2 px-2 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1 ${
+                showingOriginal
+                  ? "bg-black/60 text-white"
+                  : "bg-violet-600 text-white"
+              }`}>
+                {showingOriginal ? "Original" : <><Sparkles className="h-3 w-3" /> Mejorada</>}
               </div>
             </div>
+
+            {/* Press-and-hold compare button. Mouse for desktop, touch for
+                mobile. onMouseLeave covers the case where the cursor leaves
+                the button while still pressed, so the toggle doesn't get
+                stuck on "original". */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full select-none"
+              onMouseDown={() => setShowingOriginal(true)}
+              onMouseUp={() => setShowingOriginal(false)}
+              onMouseLeave={() => setShowingOriginal(false)}
+              onTouchStart={(e) => { e.preventDefault(); setShowingOriginal(true); }}
+              onTouchEnd={() => setShowingOriginal(false)}
+              onTouchCancel={() => setShowingOriginal(false)}
+            >
+              Mantén presionado para ver el original
+            </Button>
 
             {/* Ad copy form — lives here (after the photo is approved) so
                 the user writes the text with the actual visual in mind.
