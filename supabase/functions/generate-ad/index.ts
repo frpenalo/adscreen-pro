@@ -5,10 +5,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// (The legacy arrayBufferToBase64 helper was removed when we migrated
-// off APIYI/nano-banana-2. The new flow gets b64_json directly from
-// OpenAI's response so chunked manual base64-encoding is no longer
-// needed.)
+// Safe base64 encoding that avoids stack overflow on large buffers
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -19,11 +26,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const apiyiKey = Deno.env.get("APIYI_API_KEY")!;
     const openaiKey = Deno.env.get("OPENAI_API_KEY")!;
-    // APIYI_API_KEY was removed when we migrated Step 2 from
-    // apiyi.com / nano-banana-2 to OpenAI's /v1/images/edits endpoint
-    // with model gpt-image-2. The env var can be deleted from Supabase
-    // secrets (it's no longer read).
 
     // Auth check
     const authHeader = req.headers.get("Authorization");
@@ -47,11 +51,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // adText was previously accepted in the body but never used —  the
-    // image-enhancement step intentionally has NO knowledge of the ad
-    // copy (the AI must produce a clean photo with no text overlays;
-    // text is composed downstream by Remotion).
-    const { imageBase64, mimeType, category } = await req.json();
+    const { imageBase64, mimeType, category, adText } = await req.json();
 
     if (!imageBase64) {
       return new Response(JSON.stringify({ error: "imageBase64 required" }), {
@@ -110,12 +110,8 @@ Deno.serve(async (req) => {
     )?.[1] ?? categoryStyles.default;
 
 
-    // Step 1: GPT-4o analyzes the image and writes a precise prompt for the
-    // downstream image-generation model (gpt-image-2 today; was nano-banana-2
-    // via APIYI before). The prompt structure is model-agnostic — same
-    // subject / lighting / environment / style / technical-quality
-    // template works across diffusion- and transformer-based image models.
-    const systemPrompt = `Act as an elite Prompt Engineer for a high-end commercial image generation model. Your output must be ONE SINGLE CONTINUOUS TEXT STRING.
+    // Step 1: GPT-4o analyzes the image and writes a precise diffusion prompt
+    const systemPrompt = `Act as an elite Prompt Engineer for image diffusion models (Nano Banana 2). Your output must be ONE SINGLE CONTINUOUS TEXT STRING.
 
 Prompt Construction Protocol:
 
@@ -180,57 +176,98 @@ REQUIRED OUTPUT: Only the prompt text in English.`;
     const generatedPrompt = gptData.choices?.[0]?.message?.content?.trim() ?? "";
     console.log("GPT-4o prompt:", generatedPrompt.slice(0, 200));
 
-    // ── Step 2: gpt-image-2 transforms the image ─────────────────────────────
-    // OpenAI's /v1/images/edits endpoint takes the original photo as a
-    // multipart upload + a text prompt describing the transformation.
-    // Returns one (or more) generated images as base64. We request
-    // 1536x1024 (landscape ~3:2) — closest to 16:9 in OpenAI's allowed
-    // sizes; the Remotion render later composes the final 1920x1080
-    // video so a small aspect mismatch is fine.
+    // Step 2: nano-banana transforms the image using Claude's prompt
     const userPrompt = `Completely reimagine this photo as a high-budget professional TV commercial. DO NOT add text or graphics on top of the original photo — fully transform the scene.
 
 ${generatedPrompt}
 
-CRITICAL: Create a completely new commercial image. Do NOT overlay graphics or stickers on the original photo. Do NOT invent logos or brand names. Do NOT render any words, letters, or signage. Pure visual.`;
+CRITICAL: Create a completely new commercial image. Do NOT overlay graphics or stickers on the original photo. Do NOT invent logos or brand names. Only show text that is explicitly in the prompt above. 16:9 horizontal format.`;
 
-    // Build the multipart form payload. Decode the base64 image into bytes
-    // and wrap it as a Blob so FormData adds the right content-type and
-    // boundary headers automatically.
-    const imageBytes = Uint8Array.from(atob(imageBase64), (c) => c.charCodeAt(0));
-    const imageBlob = new Blob([imageBytes], { type: mimeType || "image/jpeg" });
-
-    const formData = new FormData();
-    formData.append("model", "gpt-image-2");
-    formData.append("image", imageBlob, "input.jpg");
-    formData.append("prompt", userPrompt);
-    formData.append("size", "1536x1024");
-    formData.append("n", "1");
-
-    const apiResponse = await fetch("https://api.openai.com/v1/images/edits", {
+    const apiResponse = await fetch("https://api.apiyi.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${openaiKey}`,
-        // Content-Type is intentionally omitted so the browser/runtime
-        // sets it to multipart/form-data with the correct boundary.
+        "Authorization": `Bearer ${apiyiKey}`,
+        "Content-Type": "application/json",
       },
-      body: formData,
+      body: JSON.stringify({
+        model: "nano-banana-2",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${mimeType};base64,${imageBase64}`,
+                },
+              },
+              {
+                type: "text",
+                text: userPrompt,
+              },
+            ],
+          },
+        ],
+      }),
     });
 
     if (!apiResponse.ok) {
       const errText = await apiResponse.text();
-      console.error("OpenAI image edit error:", apiResponse.status, errText);
-      throw new Error(`OpenAI image edit error ${apiResponse.status}: ${errText}`);
+      console.error("APIYI error:", apiResponse.status, errText);
+      throw new Error(`APIYI error ${apiResponse.status}: ${errText}`);
     }
 
     const data = await apiResponse.json();
-    // gpt-image-2 returns { data: [{ b64_json: "..." }] } by default.
-    // Output format defaults to PNG.
-    const imageData: string | null = data.data?.[0]?.b64_json ?? null;
-    const imageMime = "image/png";
+
+    let imageData: string | null = null;
+    let imageMime = "image/png";
+
+    const content = data.choices?.[0]?.message?.content;
+
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        if (part.type === "image_url" && part.image_url?.url) {
+          const url: string = part.image_url.url;
+          if (url.startsWith("data:")) {
+            const matches = url.match(/^data:([^;]+);base64,(.+)$/s);
+            if (matches) {
+              imageMime = matches[1];
+              imageData = matches[2];
+            }
+          } else {
+            const imgRes = await fetch(url);
+            const imgBuf = await imgRes.arrayBuffer();
+            imageMime = imgRes.headers.get("content-type") || "image/png";
+            imageData = arrayBufferToBase64(imgBuf);
+          }
+          break;
+        }
+      }
+    } else if (typeof content === "string") {
+      // Try base64 data URL
+      const b64matches = content.match(/data:([^;]+);base64,([A-Za-z0-9+/=\n]+)/);
+      if (b64matches) {
+        imageMime = b64matches[1];
+        imageData = b64matches[2].replace(/\n/g, "");
+      } else {
+        // Try markdown image URL: ![image](https://...)
+        const mdMatch = content.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
+        if (mdMatch) {
+          const imgUrl = mdMatch[1];
+          console.log("Fetching image from URL:", imgUrl);
+          const imgRes = await fetch(imgUrl);
+          if (imgRes.ok) {
+            const imgBuf = await imgRes.arrayBuffer();
+            imageMime = imgRes.headers.get("content-type") || "image/jpeg";
+            imageData = arrayBufferToBase64(imgBuf);
+          }
+        }
+      }
+    }
 
     if (!imageData) {
-      console.error("No image in OpenAI response:", JSON.stringify(data).slice(0, 1000));
-      throw new Error("OpenAI did not return an image. Try a different prompt.");
+      console.error("No image in response:", JSON.stringify(data).slice(0, 1000));
+      throw new Error("AI did not return an image. Try a different prompt.");
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
