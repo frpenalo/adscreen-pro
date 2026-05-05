@@ -54,11 +54,12 @@ const HowItWorksSection = () => {
         </div>
 
         <div ref={containerRef} className="mt-14 grid gap-0 md:grid-cols-3 relative">
-          {/* AnimatedBeam — desktop only. The flowing gradient between
-              step icons replaces the static linear-gradient connector.
-              On mobile (single column) the beam would zig-zag awkwardly,
-              so we hide it under md. */}
-          <div className="hidden md:block">
+          {/* AnimatedBeam overlay — absolute-positioned so it doesn't take
+              a grid cell (last bug: the wrapper was eating column 1, which
+              pushed step 1 into column 2 and step 3 onto a new row).
+              Hidden under md because beams between vertically-stacked
+              steps would zig-zag awkwardly. */}
+          <div className="absolute inset-0 pointer-events-none hidden md:block">
             <AnimatedBeam
               containerRef={containerRef}
               fromRef={step1Ref}
