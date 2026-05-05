@@ -1,27 +1,10 @@
-import { useEffect, useRef, useState } from "react";
 import { Tv, Clock, Users, TrendingUp } from "lucide-react";
+import { NumberTicker } from "@/components/magicui/number-ticker";
 
 const SCREENS = 10;
 const CLIENTS_PER_SCREEN = 300;
 const MONTHLY_IMPRESSIONS = SCREENS * CLIENTS_PER_SCREEN;
 const AVG_WAIT_MINUTES = 30;
-
-function useCountUp(target: number, duration = 1800, start = false) {
-  const [value, setValue] = useState(0);
-  useEffect(() => {
-    if (!start) return;
-    let startTime: number | null = null;
-    const step = (timestamp: number) => {
-      if (!startTime) startTime = timestamp;
-      const progress = Math.min((timestamp - startTime) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setValue(Math.floor(eased * target));
-      if (progress < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }, [target, duration, start]);
-  return value;
-}
 
 const stats = [
   {
@@ -63,27 +46,8 @@ const stats = [
 ];
 
 const ImpactSection = () => {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
-      { threshold: 0.3 }
-    );
-    if (ref.current) observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, []);
-
-  const v0 = useCountUp(stats[0].value, 1400, visible);
-  const v1 = useCountUp(stats[1].value, 1400, visible);
-  const v2 = useCountUp(stats[2].value, 2000, visible);
-  const v3 = useCountUp(stats[3].value, 1200, visible);
-  const values = [v0, v1, v2, v3];
-
   return (
     <section
-      ref={ref}
       style={{
         background: "#ffffff",
         position: "relative",
@@ -188,7 +152,9 @@ const ImpactSection = () => {
                   letterSpacing: "-0.02em",
                 }}
               >
-                {s.prefix}{values[i].toLocaleString()}{s.suffix}
+                {s.prefix}
+                <NumberTicker value={s.value} className="text-[2.4rem] font-extrabold text-[#0f172a]" />
+                {s.suffix}
               </div>
               <div style={{ fontSize: "13px", fontWeight: 600, color: "#334155", marginTop: "8px" }}>
                 {s.label}
