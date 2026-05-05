@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Play, Wifi } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { BorderBeam } from "@/components/magicui/border-beam";
 
 const adSlides = [
   {
@@ -75,6 +76,24 @@ const ScreenMockup = () => {
           maxWidth: "480px",
         }}
       >
+        {/* Animated beam tracing the TV bezel — runs continuously, gives the
+            mockup a "live signal" feel that static gradients can't achieve. */}
+        <BorderBeam
+          size={120}
+          duration={8}
+          colorFrom="#3b82f6"
+          colorTo="#8b5cf6"
+          borderWidth={2}
+        />
+        <BorderBeam
+          size={80}
+          duration={8}
+          delay={4}
+          colorFrom="#60a5fa"
+          colorTo="#a78bfa"
+          borderWidth={2}
+        />
+
         {/* Screen bezel top bar */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 8px 8px", opacity: 0.5 }}>
           <div style={{ display: "flex", gap: "4px" }}>

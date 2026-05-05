@@ -1,5 +1,7 @@
+import { useRef } from "react";
 import { useLang } from "@/contexts/LangContext";
 import { Upload, Sparkles, Tv } from "lucide-react";
+import { AnimatedBeam } from "@/components/magicui/animated-beam";
 
 const steps = [
   {
@@ -30,6 +32,15 @@ const HowItWorksSection = () => {
     { title: t.howItWorks.step3Title, desc: t.howItWorks.step3Desc },
   ];
 
+  // Refs for AnimatedBeam: container bounds the SVG, the icon refs are
+  // the from/to anchor points so the gradient line follows wherever the
+  // grid layout puts each step (responsive — desktop vs mobile).
+  const containerRef = useRef<HTMLDivElement>(null);
+  const step1Ref = useRef<HTMLDivElement>(null);
+  const step2Ref = useRef<HTMLDivElement>(null);
+  const step3Ref = useRef<HTMLDivElement>(null);
+  const stepRefs = [step1Ref, step2Ref, step3Ref];
+
   return (
     <section id="how-it-works" className="py-12 md:py-16" style={{ background: "#f1f5f9" }}>
       <div className="container">
@@ -42,20 +53,30 @@ const HowItWorksSection = () => {
           </p>
         </div>
 
-        <div className="mt-14 grid gap-0 md:grid-cols-3 relative">
-          {/* Connector line (desktop only) */}
-          <div
-            className="hidden md:block"
-            style={{
-              position: "absolute",
-              top: "36px",
-              left: "calc(16.66% + 24px)",
-              right: "calc(16.66% + 24px)",
-              height: "2px",
-              background: "linear-gradient(90deg, #3b82f6, #8b5cf6, #10b981)",
-              zIndex: 0,
-            }}
-          />
+        <div ref={containerRef} className="mt-14 grid gap-0 md:grid-cols-3 relative">
+          {/* AnimatedBeam — desktop only. The flowing gradient between
+              step icons replaces the static linear-gradient connector.
+              On mobile (single column) the beam would zig-zag awkwardly,
+              so we hide it under md. */}
+          <div className="hidden md:block">
+            <AnimatedBeam
+              containerRef={containerRef}
+              fromRef={step1Ref}
+              toRef={step2Ref}
+              gradientStartColor="#3b82f6"
+              gradientStopColor="#8b5cf6"
+              duration={4}
+            />
+            <AnimatedBeam
+              containerRef={containerRef}
+              fromRef={step2Ref}
+              toRef={step3Ref}
+              gradientStartColor="#8b5cf6"
+              gradientStopColor="#10b981"
+              duration={4}
+              delay={1.5}
+            />
+          </div>
 
           {stepData.map((step, i) => (
             <div
@@ -70,6 +91,7 @@ const HowItWorksSection = () => {
             >
               {/* Icon circle */}
               <div
+                ref={stepRefs[i]}
                 style={{
                   width: "72px",
                   height: "72px",

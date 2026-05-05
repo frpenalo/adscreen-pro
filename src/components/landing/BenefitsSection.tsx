@@ -1,4 +1,5 @@
 import { Users, RefreshCw, Smartphone, DollarSign } from "lucide-react";
+import { MagicCard } from "@/components/magicui/magic-card";
 
 const benefits = [
   {
@@ -46,46 +47,47 @@ const BenefitsSection = () => {
 
         <div className="mt-14 grid gap-6 md:grid-cols-2">
           {benefits.map((b, i) => (
-            <div
+            // MagicCard wraps each benefit. The spotlight follows the cursor
+            // across the card — way more reactive than the static border +
+            // hover-translate we had before. Each card uses its own accent
+            // color for the gradient so the four benefits feel distinct.
+            <MagicCard
               key={i}
-              style={{
-                display: "flex",
-                gap: "20px",
-                borderRadius: "16px",
-                border: "1px solid #e2e8f0",
-                background: "#fff",
-                padding: "24px",
-                transition: "box-shadow 0.2s, transform 0.2s",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 32px rgba(0,0,0,0.1)";
-                (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
-                (e.currentTarget as HTMLDivElement).style.transform = "none";
-              }}
+              className="rounded-2xl"
+              gradientFrom={b.color}
+              gradientTo={b.color}
+              gradientColor={b.color}
+              gradientOpacity={0.12}
+              gradientSize={260}
             >
               <div
                 style={{
-                  flexShrink: 0,
-                  width: "56px",
-                  height: "56px",
-                  borderRadius: "16px",
-                  background: b.color,
                   display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: `0 8px 20px ${b.color}55`,
+                  gap: "20px",
+                  padding: "24px",
                 }}
               >
-                <b.icon style={{ width: "26px", height: "26px", color: "#fff" }} />
+                <div
+                  style={{
+                    flexShrink: 0,
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "16px",
+                    background: b.color,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: `0 8px 20px ${b.color}55`,
+                  }}
+                >
+                  <b.icon style={{ width: "26px", height: "26px", color: "#fff" }} />
+                </div>
+                <div>
+                  <h3 style={{ marginBottom: "6px", fontWeight: 600, color: "#0f172a", fontSize: "15px" }}>{b.title}</h3>
+                  <p style={{ fontSize: "14px", color: "#64748b", lineHeight: 1.6 }}>{b.desc}</p>
+                </div>
               </div>
-              <div>
-                <h3 style={{ marginBottom: "6px", fontWeight: 600, color: "#0f172a", fontSize: "15px" }}>{b.title}</h3>
-                <p style={{ fontSize: "14px", color: "#64748b", lineHeight: 1.6 }}>{b.desc}</p>
-              </div>
-            </div>
+            </MagicCard>
           ))}
         </div>
       </div>
