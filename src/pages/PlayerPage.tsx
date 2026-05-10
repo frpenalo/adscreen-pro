@@ -114,9 +114,12 @@ interface AdFrameProps {
   videoRef?: React.MutableRefObject<HTMLVideoElement | null>;
   onVideoEnded: () => void;
   onVideoError: () => void;
+  onVideoStalled?: () => void;
+  onVideoWaiting?: () => void;
+  onVideoPlaying?: () => void;
 }
 
-function AdFrame({ ad, videoRef, onVideoEnded, onVideoError }: AdFrameProps) {
+function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onVideoWaiting, onVideoPlaying }: AdFrameProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
   const [box, setBox] = useState<{ width: number; height: number; left: number; top: number } | null>(null);
@@ -183,6 +186,15 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError }: AdFrameProps) {
           onEnded={onVideoEnded}
           onError={onVideoError}
           onLoadedMetadata={compute}
+          // Stall = network/decoder isn't supplying data; Waiting = ran
+          // out of buffer mid-playback. Both indicate a freeze in
+          // progress. We surface them so the parent can arm a recovery
+          // timer instead of sitting on a frozen frame.
+          onStalled={onVideoStalled}
+          onWaiting={onVideoWaiting}
+          // `playing` fires when playback resumes after a buffer wait —
+          // the parent uses this to clear any pending recovery timer.
+          onPlaying={onVideoPlaying}
         />
       )}
 
@@ -235,6 +247,17 @@ export default function PlayerPage() {
   // (or a 15s fallback if the metadata isn't loaded yet).
   const videoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Recovery timer for stall/waiting. Different from videoTimerRef
+  // (which is the duration-based safety net) — this fires when the
+  // video element explicitly tells us it's blocked on data, and gives
+  // it 5s to recover before we skip to the next ad.
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Freeze detector state. We sample currentTime every FREEZE_SAMPLE_MS
+  // and count consecutive samples where it didn't advance. After 3
+  // identical samples (~6s of no progress while the video should be
+  // playing) we treat it as a hard freeze and skip. This catches cases
+  // the duration-timer misses, e.g. decoder hangs at frame 50/300.
+  const freezeWatcherRef = useRef<{ lastTime: number; sameCount: number }>({ lastTime: -1, sameCount: 0 });
   const adsSinceWidgetRef = useRef(0);
   const widgetIndexRef = useRef(0);
 
@@ -264,17 +287,51 @@ export default function PlayerPage() {
     return () => clearInterval(interval);
   }, [screenId]);
 
-  // Auto-reload every 6h — prevents longevity bugs (memory leaks,
+  // Auto-reload every 3h — prevents longevity bugs (memory leaks,
   // stale service worker, abandoned websockets, video decoder state).
+  // Was 6h originally; halved because partner TVs running 24/7 were
+  // accumulating decoder state and dropping frames after long uptime.
   // Jittered by ±5 min to avoid a thundering-herd reload across the
   // whole fleet if many screens were opened at the same time.
   useEffect(() => {
-    const SIX_HOURS = 6 * 60 * 60 * 1000;
+    const THREE_HOURS = 3 * 60 * 60 * 1000;
     const jitter = Math.floor((Math.random() - 0.5) * 10 * 60 * 1000); // ±5 min
     const timeout = setTimeout(() => {
       window.location.reload();
-    }, SIX_HOURS + jitter);
+    }, THREE_HOURS + jitter);
     return () => clearTimeout(timeout);
+  }, []);
+
+  // Watchdog: event-loop freeze detector. Writes a timestamp to
+  // localStorage every 30s and, on the same tick, checks whether the
+  // PREVIOUS tick fired on schedule. If the gap between writes was
+  // > 90s it means the JS event loop was frozen (an ANR on Android
+  // WebView, a video decoder stalling the renderer thread, etc) — we
+  // force-reload to recover. Without this, a frozen kiosk could sit
+  // dead for up to the full auto-reload window.
+  //
+  // Why this works even though a frozen loop ALSO freezes setInterval:
+  // when the loop unfreezes, the next interval tick fires immediately
+  // and observes the gap, so the reload happens on recovery rather
+  // than during the freeze itself. Net effect: a 30s-90s freeze
+  // recovers cleanly instead of persisting until the 3h reload.
+  useEffect(() => {
+    const KEY = "adscreenpro-watchdog-tick";
+    const TICK = 30_000;
+    const FREEZE_THRESHOLD = 90_000;
+    // Seed on mount so the first check has a baseline
+    localStorage.setItem(KEY, String(Date.now()));
+    const id = setInterval(() => {
+      const last = Number(localStorage.getItem(KEY) ?? "0");
+      const now = Date.now();
+      const gap = now - last;
+      localStorage.setItem(KEY, String(now));
+      if (last > 0 && gap > FREEZE_THRESHOLD) {
+        console.warn("[player] event-loop gap detected:", gap, "ms — reloading");
+        window.location.reload();
+      }
+    }, TICK);
+    return () => clearInterval(id);
   }, []);
 
   const clearImageTimer = () => {
@@ -285,6 +342,9 @@ export default function PlayerPage() {
   };
   const clearVideoTimer = () => {
     if (videoTimerRef.current) clearTimeout(videoTimerRef.current);
+  };
+  const clearStallTimer = () => {
+    if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; }
   };
 
   const logImpression = useCallback((ad: Ad) => {
@@ -378,6 +438,75 @@ export default function PlayerPage() {
     // from the only ad back to itself (current stays the same when
     // ads.length === 1). Without it, the video plays once and freezes.
   }, [tick, current, loaded, ads, next, activeWidget]);
+
+  // Freeze detector — independent of `duration`. The duration-based
+  // videoTimerRef expires at duration+2s, but a video that hangs at
+  // frame 50/300 sits there silently for 8 more seconds before the
+  // safety net fires. This watcher samples currentTime every 2s and
+  // skips after 6s of no progress. Cheaper than rAF, accurate enough.
+  useEffect(() => {
+    if (!loaded || ads.length === 0 || activeWidget) return;
+    if (ads[current]?.type !== "video") return;
+    const v = videoRef.current;
+    if (!v) return;
+    freezeWatcherRef.current = { lastTime: -1, sameCount: 0 };
+    const SAMPLE_MS = 2000;
+    const STUCK_SAMPLES = 3; // 3 × 2s = 6s of no progress = freeze
+    const id = setInterval(() => {
+      // Don't flag legit pauses (seeking, ended, paused, no data yet)
+      // — only when the video is supposed to be actively playing.
+      if (!v || v.paused || v.ended || v.seeking || v.readyState < 2) return;
+      const t = v.currentTime;
+      const w = freezeWatcherRef.current;
+      if (w.lastTime >= 0 && Math.abs(t - w.lastTime) < 0.05) {
+        w.sameCount += 1;
+        if (w.sameCount >= STUCK_SAMPLES) {
+          console.warn("[player] video freeze detected at", t, "s — advancing");
+          next();
+        }
+      } else {
+        w.sameCount = 0;
+      }
+      w.lastTime = t;
+    }, SAMPLE_MS);
+    return () => clearInterval(id);
+  }, [tick, current, loaded, ads, next, activeWidget]);
+
+  // Recovery handlers — wired into the <video> via AdFrame. `stalled`
+  // and `waiting` mean the player is blocked on data; if it doesn't
+  // recover (`playing` event) within 5s, we skip. This catches network
+  // drops in the middle of a video that the freeze-watcher's 6s window
+  // would also catch but slower.
+  const onVideoStallOrWait = useCallback(() => {
+    if (stallTimerRef.current) return; // already armed
+    stallTimerRef.current = setTimeout(() => {
+      console.warn("[player] video stall did not recover in 5s — advancing");
+      stallTimerRef.current = null;
+      next();
+    }, 5000);
+  }, [next]);
+  const onVideoPlaying = useCallback(() => {
+    clearStallTimer();
+  }, []);
+
+  // Decoder cleanup on ad change. Without this, Android WebView holds
+  // the decoder reference to the *previous* MP4 even after we switch
+  // src, leaking memory across hours of playback. Setting src="" +
+  // load() releases the decoder before the next video mounts.
+  useEffect(() => {
+    return () => {
+      const v = videoRef.current;
+      if (v) {
+        try {
+          v.pause();
+          v.removeAttribute("src");
+          v.load();
+        } catch { /* swallow — best-effort cleanup */ }
+      }
+      clearStallTimer();
+      freezeWatcherRef.current = { lastTime: -1, sameCount: 0 };
+    };
+  }, [current]);
 
   const fetchAds = useCallback(async () => {
     try {
@@ -486,6 +615,9 @@ export default function PlayerPage() {
             videoRef={index === current ? videoRef : undefined}
             onVideoEnded={next}
             onVideoError={next}
+            onVideoStalled={index === current ? onVideoStallOrWait : undefined}
+            onVideoWaiting={index === current ? onVideoStallOrWait : undefined}
+            onVideoPlaying={index === current ? onVideoPlaying : undefined}
           />
         </div>
         );
