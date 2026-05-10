@@ -17,6 +17,12 @@ import fs from "fs";
 import os from "os";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
+// @ffmpeg-installer/ffmpeg ships a static ffmpeg binary cross-platform.
+// We use this instead of relying on `ffmpeg` in PATH because GitHub
+// Actions Ubuntu runners no longer have ffmpeg preinstalled (confirmed
+// 2026-05-10: ENOENT in CI). The package adds ~50MB to node_modules
+// but only runs on CI, so it's fine.
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 
 // Re-encode a Remotion MP4 with Android-WebView-safe H.264 settings.
 // Remotion's renderMedia doesn't expose H.264 profile / B-frame
@@ -45,7 +51,7 @@ async function reEncodeForAndroid(inputPath, outputPath) {
     outputPath,
   ];
   return new Promise((resolve, reject) => {
-    const proc = spawn("ffmpeg", args, { stdio: "inherit" });
+    const proc = spawn(ffmpegInstaller.path, args, { stdio: "inherit" });
     proc.on("error", reject);
     proc.on("exit", (code) => {
       if (code === 0) resolve();

@@ -37,6 +37,9 @@ import fs from "fs";
 import os from "os";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
+// GH Actions runners no longer ship ffmpeg in PATH — use the npm
+// package that bundles a static binary cross-platform.
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 
 // Post-process re-encode to Constrained Baseline H.264 for Android
 // WebView hardware decoders. See render.mjs for the full diagnosis
@@ -59,7 +62,7 @@ async function reEncodeForAndroid(inputPath, outputPath) {
     outputPath,
   ];
   return new Promise((resolve, reject) => {
-    const proc = spawn("ffmpeg", args, { stdio: "inherit" });
+    const proc = spawn(ffmpegInstaller.path, args, { stdio: "inherit" });
     proc.on("error", reject);
     proc.on("exit", (code) => {
       if (code === 0) resolve();

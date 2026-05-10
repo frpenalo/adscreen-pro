@@ -60,7 +60,7 @@ jobs:
 
       - name: Install render script dependencies
         working-directory: remotion
-        run: npm install @remotion/renderer @remotion/bundler
+        run: npm install @remotion/renderer @remotion/bundler @ffmpeg-installer/ffmpeg
 
       - name: Render and publish
         working-directory: remotion

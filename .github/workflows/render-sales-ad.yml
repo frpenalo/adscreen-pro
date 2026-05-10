@@ -53,7 +53,7 @@ jobs:
 
       - name: Install render script extra dependencies
         working-directory: remotion
-        run: npm install @remotion/renderer @remotion/bundler qrcode
+        run: npm install @remotion/renderer @remotion/bundler qrcode @ffmpeg-installer/ffmpeg
 
       - name: Render video and publish
         working-directory: remotion
