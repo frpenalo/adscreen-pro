@@ -166,10 +166,17 @@ Deno.serve(async (req) => {
     }
     const distanceM = haversineMeters(lat, lng, partner.lat, partner.lng);
     if (distanceM > MAX_DISTANCE_METERS) {
-      console.log(`[transform-selfie] geofence reject: ${Math.round(distanceM)}m from ${partner.business_name}`);
+      console.log(`[transform-selfie] geofence reject: ${Math.round(distanceM)}m from ${partner.business_name} (customer ${lat},${lng} acc=${accuracy}m vs partner ${partner.lat},${partner.lng})`);
       return json(403, {
         error: `Tienes que estar dentro de ${partner.business_name} para participar.`,
         code: "too_far",
+        debug: {
+          distance_m: Math.round(distanceM),
+          accuracy_m: Math.round(accuracy),
+          customer: { lat, lng },
+          partner:  { lat: partner.lat, lng: partner.lng },
+          threshold_m: MAX_DISTANCE_METERS,
+        },
       });
     }
 

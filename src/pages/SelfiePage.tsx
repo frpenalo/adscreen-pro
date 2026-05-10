@@ -187,7 +187,14 @@ export default function SelfiePage() {
         // route to the dedicated geo-denied screen so the customer gets a
         // clear actionable message instead of a generic toast.
         if (errBody.code === "too_far" || errBody.code === "low_accuracy" || errBody.code === "no_partner_geo") {
-          setError(errBody.error);
+          // If the server included debug info (too_far includes
+          // distance/accuracy/coords), surface it so we can see why
+          // a legit customer was rejected during testing.
+          const dbg = errBody.debug;
+          const dbgStr = dbg
+            ? `\n\nDebug: distancia=${dbg.distance_m}m, accuracy=${dbg.accuracy_m}m, threshold=${dbg.threshold_m}m\nTú: ${dbg.customer?.lat}, ${dbg.customer?.lng}\nNegocio: ${dbg.partner?.lat}, ${dbg.partner?.lng}`
+            : "";
+          setError((errBody.error || "") + dbgStr);
           setStep("geo-denied");
           return;
         }
@@ -370,7 +377,7 @@ export default function SelfiePage() {
         <h2 className="text-2xl font-bold mb-2 text-center">
           Tienes que estar en el negocio
         </h2>
-        <p className="text-center text-white/70 max-w-sm mb-2 text-sm leading-relaxed">
+        <p className="text-center text-white/70 max-w-sm mb-2 text-sm leading-relaxed whitespace-pre-line">
           {error || `Para que tu selfie aparezca en la TV de ${businessName}, necesitas estar dentro del local.`}
         </p>
         <p className="text-center text-white/50 text-xs max-w-sm mb-8">
