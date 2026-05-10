@@ -18,6 +18,7 @@ import WeatherWidget from "@/components/player/WeatherWidget";
 import JokeWidget from "@/components/player/JokeWidget";
 import SportsWidget from "@/components/player/SportsWidget";
 import NewsWidget from "@/components/player/NewsWidget";
+import SelfieWidget from "@/components/player/SelfieWidget";
 
 interface Ad {
   id: string;
@@ -25,10 +26,21 @@ interface Ad {
   final_media_path: string;
   qr_url?: string | null;
   metadata?: any;
+  // Selfies are stored in the same `ads` table with kind='selfie'.
+  // The player uses these to render the customer-name overlay and
+  // to avoid logging selfies as paid impressions.
+  kind?: "ad" | "selfie";
+  customer_name?: string | null;
 }
 
-type WidgetType = "clock" | "weather" | "joke" | "sports" | "news";
-const WIDGETS: WidgetType[] = ["clock", "weather", "joke", "sports", "news"];
+type WidgetType = "clock" | "weather" | "joke" | "sports" | "news" | "selfie-cta";
+const WIDGETS: WidgetType[] = ["clock", "weather", "joke", "sports", "news", "selfie-cta"];
+
+// Ratio for interleaving customer selfies into the ad rotation. With
+// the default of 5, the visible loop is "ad ad ad ad ad SELFIE ad ad
+// ad ad ad SELFIE...". If there are no active selfies, the slot just
+// becomes another ad — paid ads never lose airtime to empty slots.
+const SELFIE_EVERY_N_ADS = 5;
 const WIDGET_DURATION = 10000;
 const IMAGE_DURATION = 10000;
 const DEFAULT_WIDGET_FREQUENCY = 3;
@@ -409,6 +421,10 @@ export default function PlayerPage() {
 
   const logImpression = useCallback((ad: Ad) => {
     if (!ad || !online) return;
+    // Skip selfies — they're filler content, not billable impressions.
+    // Counting them would inflate analytics and confuse advertiser
+    // reporting (a selfie display in the rotation isn't a paid ad view).
+    if (ad.kind === "selfie") return;
     supabase.from("ad_logs").insert({ ad_id: ad.id, location_id: screenId ?? "unknown" });
   }, [screenId, online]);
 
@@ -460,7 +476,12 @@ export default function PlayerPage() {
     const ad = ads[current];
     if (ad?.type === "image") {
       clearImageTimer();
-      imageTimerRef.current = setTimeout(next, IMAGE_DURATION);
+      // Selfies show shorter (5s vs 10s for ads). They're filler
+      // content; the customer wants a quick reveal moment, not an
+      // extended display. Also keeps the rotation snappy when many
+      // selfies are queued.
+      const duration = ad.kind === "selfie" ? 5000 : IMAGE_DURATION;
+      imageTimerRef.current = setTimeout(next, duration);
     }
     return clearImageTimer;
   }, [tick, current, loaded, ads, next, activeWidget]);
@@ -570,6 +591,10 @@ export default function PlayerPage() {
 
   const fetchAds = useCallback(async () => {
     try {
+      // Filter out selfies in queries 1+2 — they live in the same
+      // table but get their own query so we can interleave them at
+      // the right ratio. Without `kind=ad` the ad rotation would get
+      // diluted by however many selfies are active.
       // Query 1: general ads (screen_id IS NULL).
       // By definition these are NOT tied to any specific partner, so we
       // strip any qr_url they may carry — only per-screen ads (query 2)
@@ -578,6 +603,7 @@ export default function PlayerPage() {
         .from("ads")
         .select("id, type, final_media_path, qr_url, metadata")
         .eq("status", "published")
+        .eq("kind" as any, "ad")
         .is("screen_id" as any, null)
         .limit(50);
       if (err1) throw err1;
@@ -589,9 +615,29 @@ export default function PlayerPage() {
           .from("ads")
           .select("id, type, final_media_path, qr_url, metadata")
           .eq("status", "published")
+          .eq("kind" as any, "ad")
           .eq("screen_id" as any, screenId)
           .limit(10);
         if (!err2) localAds = local ?? [];
+      }
+
+      // Query 3: active customer selfies for this screen. Filter
+      // expires_at server-side so the player never holds expired
+      // rows. Order by created_at desc so the newest selfie shows
+      // first when this screen has more than one ready.
+      let selfieRows: any[] = [];
+      if (screenId) {
+        const nowIso = new Date().toISOString();
+        const { data: selfies } = await supabase
+          .from("ads")
+          .select("id, type, final_media_path, customer_name, metadata")
+          .eq("status", "published")
+          .eq("kind" as any, "selfie")
+          .eq("screen_id" as any, screenId)
+          .gt("expires_at", nowIso)
+          .order("created_at", { ascending: false })
+          .limit(8);
+        selfieRows = selfies ?? [];
       }
 
       const generalList: Ad[] = (generalAds ?? []).map((row: any) => ({
@@ -600,6 +646,7 @@ export default function PlayerPage() {
         final_media_path: row.final_media_path,
         qr_url: null, // never render a partner QR on a non-scoped ad
         metadata: row.metadata ?? null,
+        kind: "ad",
       }));
       const localList: Ad[] = localAds.map((row: any) => ({
         id: row.id,
@@ -607,10 +654,41 @@ export default function PlayerPage() {
         final_media_path: row.final_media_path,
         qr_url: row.qr_url ?? null,
         metadata: row.metadata ?? null,
+        kind: "ad",
       }));
-      const list: Ad[] = [...generalList, ...localList];
-      setAds(list);
-      saveCache(screenId, list);
+      const selfieList: Ad[] = selfieRows.map((row: any) => ({
+        id: row.id,
+        type: row.type,
+        final_media_path: row.final_media_path,
+        qr_url: null,
+        metadata: row.metadata ?? null,
+        kind: "selfie",
+        customer_name: row.customer_name ?? null,
+      }));
+
+      // Interleave: every Nth ad slot becomes a selfie if any are
+      // available. If we run out of selfies, those slots stay as ads.
+      // This keeps paid ads' airtime intact when the screen has zero
+      // active selfies.
+      const ads: Ad[] = [...generalList, ...localList];
+      const interleaved: Ad[] = [];
+      let selfieIdx = 0;
+      for (let i = 0; i < ads.length; i++) {
+        interleaved.push(ads[i]);
+        if (
+          (i + 1) % SELFIE_EVERY_N_ADS === 0 &&
+          selfieIdx < selfieList.length
+        ) {
+          interleaved.push(selfieList[selfieIdx++]);
+        }
+      }
+      // Any leftover selfies (more selfies than slots) — append at end
+      while (selfieIdx < selfieList.length) {
+        interleaved.push(selfieList[selfieIdx++]);
+      }
+
+      setAds(interleaved);
+      saveCache(screenId, interleaved);
       setLoaded(true);
     } catch {
       setLoaded(true);
@@ -695,12 +773,39 @@ export default function PlayerPage() {
         className="absolute inset-0 transition-opacity duration-700"
         style={{ opacity: activeWidget ? 1 : 0, zIndex: activeWidget ? 2 : 0 }}
       >
-        {activeWidget === "clock"   && <ClockWidget />}
-        {activeWidget === "weather" && <WeatherWidget />}
-        {activeWidget === "joke"    && <JokeWidget />}
-        {activeWidget === "sports"  && <SportsWidget />}
-        {activeWidget === "news"    && <NewsWidget />}
+        {activeWidget === "clock"      && <ClockWidget />}
+        {activeWidget === "weather"    && <WeatherWidget />}
+        {activeWidget === "joke"       && <JokeWidget />}
+        {activeWidget === "sports"     && <SportsWidget />}
+        {activeWidget === "news"       && <NewsWidget />}
+        {activeWidget === "selfie-cta" && screenId && <SelfieWidget screenId={screenId} />}
       </div>
+
+      {/* Selfie name overlay — only shows when the active ad is a
+          customer selfie. Stays out of the way (top-right corner) so
+          it doesn't fight with the QR overlay or the media itself.
+          Drives social-share moment: customer points at TV showing
+          their own name + transformed selfie, takes phone photo. */}
+      {(() => {
+        if (activeWidget) return null;
+        const ad = ads[current];
+        if (ad?.kind !== "selfie") return null;
+        const name = ad.customer_name;
+        const business = (ad.metadata as any)?.business_name;
+        return (
+          <div className="absolute top-6 left-6 right-6 z-10 pointer-events-none flex justify-between items-start">
+            <div className="bg-gradient-to-br from-violet-500/90 to-fuchsia-600/90 backdrop-blur-md rounded-2xl px-5 py-3 shadow-2xl border border-white/20">
+              <div className="text-white/70 text-[10px] tracking-[0.3em] uppercase font-medium mb-0.5">
+                Hecho con AdScreenPro
+              </div>
+              <div className="text-white font-bold leading-tight" style={{ fontSize: "1.8vw" }}>
+                {name ? `👋 ${name}` : "👋 Un cliente"}
+                {business ? <span className="text-white/80 font-normal"> en {business}</span> : null}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Watermark */}
       <div className="absolute bottom-3 right-4 z-10 pointer-events-none">

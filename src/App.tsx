@@ -18,6 +18,8 @@ import PartnerDashboard from "./pages/dashboard/PartnerDashboard";
 import AdminDashboard from "./pages/dashboard/AdminDashboard";
 import NotFound from "./pages/NotFound";
 import AdRedirect from "./pages/AdRedirect";
+import ResetPassword from "./pages/ResetPassword";
+import SelfiePage from "./pages/SelfiePage";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +37,7 @@ const App = () => (
               <Route path="/register" element={<Register />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/check-email" element={<CheckEmail />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/auth/redirect" element={<AuthRedirect />} />
               <Route path="/dashboard/advertiser" element={
                 <ProtectedRoute allowedRole="advertiser"><AdvertiserDashboard /></ProtectedRoute>
@@ -48,6 +51,7 @@ const App = () => (
               <Route path="/player" element={<PlayerPage />} />
               <Route path="/player/:screenId" element={<PlayerPage />} />
               <Route path="/r/:adId/:screenId" element={<AdRedirect />} />
+              <Route path="/selfie/:screenId" element={<SelfiePage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
