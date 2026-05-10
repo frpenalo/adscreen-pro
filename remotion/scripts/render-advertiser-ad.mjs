@@ -14,7 +14,38 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import { spawn } from "child_process";
 import { fileURLToPath } from "url";
+
+// Post-process re-encode to Constrained Baseline H.264 for Android
+// WebView hardware decoders. See render.mjs for the full diagnosis
+// (Softmedia SalesAd freeze, 2026-05-10).
+async function reEncodeForAndroid(inputPath, outputPath) {
+  console.log("Re-encoding for Android-WebView compatibility...");
+  const args = [
+    "-y",
+    "-i", inputPath,
+    "-c:v", "libx264",
+    "-profile:v", "baseline",
+    "-level", "4.0",
+    "-pix_fmt", "yuv420p",
+    "-bf", "0",
+    "-preset", "fast",
+    "-crf", "23",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-movflags", "+faststart",
+    outputPath,
+  ];
+  return new Promise((resolve, reject) => {
+    const proc = spawn("ffmpeg", args, { stdio: "inherit" });
+    proc.on("error", reject);
+    proc.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg re-encode failed with exit code ${code}`));
+    });
+  });
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -122,21 +153,14 @@ async function main() {
     // para que TVs/navegadores no asuman BT.601 por defecto y los
     // colores oscuros no se vuelvan azules ni los dorados rosados.
     //
-    // Android-WebView-safe encoding: Constrained Baseline + no
-    // B-frames + yuv420p. Without these, Remotion's defaults
-    // (High profile + B-frames + yuvj420p) crash the hardware
-    // decoder on Fully Kiosk TVs mid-playback. Confirmed on
-    // Softmedia SalesAd 2026-05-10.
+    // pixelFormat fixes Remotion's default yuvj420p. H.264 profile
+    // and B-frame fixes happen in post-process via reEncodeForAndroid
+    // because Remotion's ffmpegOverride hits the muxing pass (copy
+    // mode), where encoder-only flags get rejected.
     pixelFormat: "yuv420p",
     ffmpegOverride: ({ args }) => {
-      const safetyFlags = [
-        "-profile:v", "baseline",
-        "-level", "4.0",
-        "-bf", "0",
-        "-movflags", "+faststart",
-      ];
       const colorTags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
-      return [...args.slice(0, -1), ...safetyFlags, ...colorTags, args[args.length - 1]];
+      return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
     },
     onProgress: ({ progress }) => {
       process.stdout.write(`\r   Progress: ${Math.round(progress * 100)}%`);
@@ -144,13 +168,18 @@ async function main() {
   });
   console.log("\nVideo rendered:", outputPath);
 
+  // ── 3.5. Re-encode for Android-WebView compatibility ─────────────────────
+  const safeOutputPath = path.join(tmpDir, `advertiser-ad-${adId}-safe.mp4`);
+  await reEncodeForAndroid(outputPath, safeOutputPath);
+  console.log("Re-encoded for Android:", safeOutputPath);
+
   // ── 4. Upload MP4 to Supabase Storage ───────────────────────────────────
   console.log("Uploading video to Supabase Storage...");
   const videoStoragePath = `advertiser-ads/${adId}.mp4`;
   const videoPublicUrl = await uploadToStorage(
     "ad-media",
     videoStoragePath,
-    fs.readFileSync(outputPath),
+    fs.readFileSync(safeOutputPath),
     "video/mp4"
   );
   console.log("Video URL:", videoPublicUrl);
@@ -162,6 +191,7 @@ async function main() {
 
   // ── 6. Cleanup temp file ─────────────────────────────────────────────────
   fs.unlinkSync(outputPath);
+  if (fs.existsSync(safeOutputPath)) fs.unlinkSync(safeOutputPath);
 
   console.log(`\nDone! Advertiser ad rendered for ad_id: ${adId}`);
 }

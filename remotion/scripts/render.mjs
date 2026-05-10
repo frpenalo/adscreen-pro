@@ -15,7 +15,44 @@ import QRCode from "qrcode";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import { spawn } from "child_process";
 import { fileURLToPath } from "url";
+
+// Re-encode a Remotion MP4 with Android-WebView-safe H.264 settings.
+// Remotion's renderMedia doesn't expose H.264 profile / B-frame
+// controls, and its `ffmpegOverride` fires on the muxing pass (which
+// uses -c:v copy) so encoder flags get rejected there. The cleanest
+// path is to post-process: take Remotion's output and re-encode it.
+//
+// Settings tuned for the cheap Android-stick decoders that the Fully
+// Kiosk fleet runs on. Quality loss from the extra encode is
+// negligible at our resolution/bitrate (~440kbps 1080p).
+async function reEncodeForAndroid(inputPath, outputPath) {
+  console.log("🔧 Re-encoding for Android-WebView compatibility...");
+  const args = [
+    "-y",
+    "-i", inputPath,
+    "-c:v", "libx264",
+    "-profile:v", "baseline",     // universal — no CABAC, no 8x8 transforms
+    "-level", "4.0",              // covers 1080p30 with bitrate headroom
+    "-pix_fmt", "yuv420p",        // limited-range YUV (not yuvj)
+    "-bf", "0",                   // no B-frames; some hw decoders crash on them
+    "-preset", "fast",            // sane speed/quality tradeoff in CI
+    "-crf", "23",                 // visually lossless for our content
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-movflags", "+faststart",    // moov atom up front for streaming
+    outputPath,
+  ];
+  return new Promise((resolve, reject) => {
+    const proc = spawn("ffmpeg", args, { stdio: "inherit" });
+    proc.on("error", reject);
+    proc.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg re-encode failed with exit code ${code}`));
+    });
+  });
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -155,32 +192,14 @@ async function main() {
     // intacto (no se transforma ni re-codifica). Solo añade metadata
     // para que TVs/navegadores no asuman BT.601 por defecto y los
     // colores oscuros no se vuelvan azules ni los dorados rosados.
-    // Pixel format MUST be the standard limited-range yuv420p. Without
-    // this, Remotion defaults to yuvj420p (JPEG range) — which combined
-    // with High profile and B-frames crashes the hardware decoder on
-    // cheap Android sticks. Confirmed reproduction: Softmedia salesAd
-    // froze every Fully Kiosk TV mid-playback until re-encoded with
-    // these flags.
+    // Pixel format limited-range yuv420p (Remotion defaults to yuvj).
+    // The H.264 profile / B-frame fixes happen in post-process via
+    // ffmpeg (reEncodeForAndroid) because Remotion's ffmpegOverride
+    // hits the muxing pass where -c:v copy rejects encoder flags.
     pixelFormat: "yuv420p",
     ffmpegOverride: ({ args }) => {
-      const safetyFlags = [
-        // Constrained Baseline = universal H.264 decoding. High profile
-        // (Remotion default) uses CABAC and other features that older
-        // hardware decoders choke on, especially on Android WebView.
-        "-profile:v", "baseline",
-        // Level 4.0 covers 1080p30 at up to 25Mbps; safe headroom for
-        // our ~500kbps target bitrate.
-        "-level", "4.0",
-        // B-frames require frame reordering, which is part of High
-        // profile and crashes Android hardware decoders. Force zero.
-        "-bf", "0",
-        // moov atom at the start of the file so playback can begin
-        // before the entire file is buffered (important for partner
-        // TVs on flaky wifi).
-        "-movflags", "+faststart",
-      ];
       const colorTags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
-      return [...args.slice(0, -1), ...safetyFlags, ...colorTags, args[args.length - 1]];
+      return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
     },
     onProgress: ({ progress }) => {
       process.stdout.write(`\r   Progress: ${Math.round(progress * 100)}%`);
@@ -188,10 +207,18 @@ async function main() {
   });
   console.log("\n✅ Video rendered:", outputPath);
 
+  // ── 5.5. Re-encode for Android-WebView compatibility ─────────────────────
+  // Remotion's output has H.264 High profile + B-frames, which crash
+  // the hardware decoder on cheap Android sticks. Convert to Baseline
+  // + no B-frames before uploading.
+  const safeOutputPath = path.join(tmpDir, `sales-ad-${partnerId}-safe.mp4`);
+  await reEncodeForAndroid(outputPath, safeOutputPath);
+  console.log("✅ Re-encoded for Android:", safeOutputPath);
+
   // ── 6. Upload MP4 to Supabase Storage ───────────────────────────────────
   console.log("☁️  Uploading video to Supabase Storage...");
   const videoStoragePath = `partner-sales-ads/${partnerId}.mp4`;
-  const videoPublicUrl = await uploadToStorage("ad-media", videoStoragePath, fs.readFileSync(outputPath), "video/mp4");
+  const videoPublicUrl = await uploadToStorage("ad-media", videoStoragePath, fs.readFileSync(safeOutputPath), "video/mp4");
   console.log("✅ Video URL:", videoPublicUrl);
 
   // ── 7. Remove existing sales ad for this partner, insert new one ─────────
@@ -227,20 +254,12 @@ async function main() {
       codec: "h264",
       outputLocation: verticalOutputPath,
       inputProps: verticalProps,
-      // Same Android-WebView-safe encoding as the horizontal above.
-      // Vertical isn't played on Fully Kiosk TVs (partner downloads
-      // for social), but consistency means anywhere this file ends
-      // up — phone Reels, WhatsApp Status — also plays cleanly.
+      // pixelFormat fixes yuvj420p; profile/B-frames fixed in
+      // post-process via reEncodeForAndroid below.
       pixelFormat: "yuv420p",
       ffmpegOverride: ({ args }) => {
-        const safetyFlags = [
-          "-profile:v", "baseline",
-          "-level", "4.0",
-          "-bf", "0",
-          "-movflags", "+faststart",
-        ];
         const colorTags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
-        return [...args.slice(0, -1), ...safetyFlags, ...colorTags, args[args.length - 1]];
+        return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
       },
       onProgress: ({ progress }) => {
         process.stdout.write(`\r   Vertical progress: ${Math.round(progress * 100)}%`);
@@ -248,11 +267,15 @@ async function main() {
     });
     console.log("\n✅ Vertical rendered:", verticalOutputPath);
 
+    const verticalSafePath = path.join(tmpDir, `sales-ad-vertical-${partnerId}-safe.mp4`);
+    await reEncodeForAndroid(verticalOutputPath, verticalSafePath);
+    console.log("✅ Vertical re-encoded for Android:", verticalSafePath);
+
     const verticalStoragePath = `partner-sales-ads-vertical/${partnerId}.mp4`;
     const verticalPublicUrl = await uploadToStorage(
       "ad-media",
       verticalStoragePath,
-      fs.readFileSync(verticalOutputPath),
+      fs.readFileSync(verticalSafePath),
       "video/mp4"
     );
     console.log("✅ Vertical URL:", verticalPublicUrl);
