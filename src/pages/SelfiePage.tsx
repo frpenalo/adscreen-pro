@@ -157,11 +157,17 @@ export default function SelfiePage() {
       const fp = await getFingerprint();
       const imageBase64 = await toBase64(file);
       const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transform-selfie`;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
       const res = await fetch(fnUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          // Supabase edge functions verify JWT by default. The anon
+          // key is a valid JWT — pass it as Authorization. Without
+          // this header, the gateway returns 401 before reaching the
+          // function code at all.
+          "Authorization": `Bearer ${anonKey}`,
+          apikey: anonKey,
         },
         body: JSON.stringify({
           imageBase64,
@@ -306,8 +312,8 @@ export default function SelfiePage() {
             disabled={!file}
             className="w-full py-4 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 disabled:opacity-30 disabled:cursor-not-allowed font-semibold text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
           >
-            <Sparkles className="h-5 w-5" />
-            ¡Sorpréndeme!
+            <Tv className="h-5 w-5" />
+            Mostrar en la TV
           </button>
 
           {error && (
