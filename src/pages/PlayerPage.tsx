@@ -570,23 +570,33 @@ export default function PlayerPage() {
     clearStallTimer();
   }, []);
 
-  // Decoder cleanup on ad change. Without this, Android WebView holds
-  // the decoder reference to the *previous* MP4 even after we switch
-  // src, leaking memory across hours of playback. Setting src="" +
-  // load() releases the decoder before the next video mounts.
+  // (Removed: "Decoder cleanup on ad change" useEffect.)
+  // Intent was to release the WebView decoder by pausing + clearing
+  // src on the OLD video before the new one mounts. The bug: by the
+  // time the useEffect cleanup ran, React had already remounted refs
+  // — videoRef.current pointed to the NEW video, not the old one.
+  // The "cleanup" was wiping the src of the newly-mounted video,
+  // leaving every video after the first as a blank/black frame.
+  //
+  // The remaining protections cover the same problem space without
+  // this bug:
+  //   - Auto-reload every 3h flushes accumulated decoder state
+  //   - Freeze detector skips ads whose decoder hung mid-playback
+  //   - Stall/waiting handlers recover from network drops
+  //   - onError → next() skips broken sources entirely
+  //
+  // If memory accumulation becomes measurable in production, the
+  // correct fix is to capture the video element at effect-time (not
+  // cleanup-time) into a closure variable, so the cleanup operates
+  // on the element that was current when the effect ran. Out of
+  // scope for the surgical fix.
+
+  // Reset stall + freeze state on ad change. Safe — only touches
+  // local refs, not the DOM. Mirrors what the buggy cleanup tried
+  // to do for its non-DOM bookkeeping.
   useEffect(() => {
-    return () => {
-      const v = videoRef.current;
-      if (v) {
-        try {
-          v.pause();
-          v.removeAttribute("src");
-          v.load();
-        } catch { /* swallow — best-effort cleanup */ }
-      }
-      clearStallTimer();
-      freezeWatcherRef.current = { lastTime: -1, sameCount: 0 };
-    };
+    clearStallTimer();
+    freezeWatcherRef.current = { lastTime: -1, sameCount: 0 };
   }, [current]);
 
   const fetchAds = useCallback(async () => {
