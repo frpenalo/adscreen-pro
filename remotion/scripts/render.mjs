@@ -155,9 +155,32 @@ async function main() {
     // intacto (no se transforma ni re-codifica). Solo añade metadata
     // para que TVs/navegadores no asuman BT.601 por defecto y los
     // colores oscuros no se vuelvan azules ni los dorados rosados.
+    // Pixel format MUST be the standard limited-range yuv420p. Without
+    // this, Remotion defaults to yuvj420p (JPEG range) — which combined
+    // with High profile and B-frames crashes the hardware decoder on
+    // cheap Android sticks. Confirmed reproduction: Softmedia salesAd
+    // froze every Fully Kiosk TV mid-playback until re-encoded with
+    // these flags.
+    pixelFormat: "yuv420p",
     ffmpegOverride: ({ args }) => {
+      const safetyFlags = [
+        // Constrained Baseline = universal H.264 decoding. High profile
+        // (Remotion default) uses CABAC and other features that older
+        // hardware decoders choke on, especially on Android WebView.
+        "-profile:v", "baseline",
+        // Level 4.0 covers 1080p30 at up to 25Mbps; safe headroom for
+        // our ~500kbps target bitrate.
+        "-level", "4.0",
+        // B-frames require frame reordering, which is part of High
+        // profile and crashes Android hardware decoders. Force zero.
+        "-bf", "0",
+        // moov atom at the start of the file so playback can begin
+        // before the entire file is buffered (important for partner
+        // TVs on flaky wifi).
+        "-movflags", "+faststart",
+      ];
       const colorTags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
-      return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
+      return [...args.slice(0, -1), ...safetyFlags, ...colorTags, args[args.length - 1]];
     },
     onProgress: ({ progress }) => {
       process.stdout.write(`\r   Progress: ${Math.round(progress * 100)}%`);
@@ -204,9 +227,20 @@ async function main() {
       codec: "h264",
       outputLocation: verticalOutputPath,
       inputProps: verticalProps,
+      // Same Android-WebView-safe encoding as the horizontal above.
+      // Vertical isn't played on Fully Kiosk TVs (partner downloads
+      // for social), but consistency means anywhere this file ends
+      // up — phone Reels, WhatsApp Status — also plays cleanly.
+      pixelFormat: "yuv420p",
       ffmpegOverride: ({ args }) => {
+        const safetyFlags = [
+          "-profile:v", "baseline",
+          "-level", "4.0",
+          "-bf", "0",
+          "-movflags", "+faststart",
+        ];
         const colorTags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
-        return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
+        return [...args.slice(0, -1), ...safetyFlags, ...colorTags, args[args.length - 1]];
       },
       onProgress: ({ progress }) => {
         process.stdout.write(`\r   Vertical progress: ${Math.round(progress * 100)}%`);

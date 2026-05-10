@@ -132,9 +132,22 @@ async function main() {
     inputProps: { spec },
     // Same BT.709 color tagging as the legacy renders — keeps colors
     // correct on Fully Kiosk / TVs across the whole pipeline.
+    //
+    // Android-WebView-safe encoding: Constrained Baseline + no
+    // B-frames + yuv420p. Without these, Remotion's defaults
+    // (High profile + B-frames + yuvj420p) crash the hardware
+    // decoder on Fully Kiosk TVs mid-playback. Confirmed on
+    // Softmedia SalesAd 2026-05-10.
+    pixelFormat: "yuv420p",
     ffmpegOverride: ({ args }) => {
+      const safetyFlags = [
+        "-profile:v", "baseline",
+        "-level", "4.0",
+        "-bf", "0",
+        "-movflags", "+faststart",
+      ];
       const colorTags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
-      return [...args.slice(0, -1), ...colorTags, args[args.length - 1]];
+      return [...args.slice(0, -1), ...safetyFlags, ...colorTags, args[args.length - 1]];
     },
     onProgress: ({ progress }) => {
       process.stdout.write(`\r   Progress: ${Math.round(progress * 100)}%`);
