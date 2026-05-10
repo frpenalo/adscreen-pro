@@ -56,6 +56,30 @@ const LIMIT_PER_IP_24H = 5;
 const MAX_ACTIVE_PER_SCREEN = 8;
 const SELFIE_EXPIRES_HOURS = 8;
 
+// Geofence — the customer MUST be physically inside the partner's
+// business. Tight on purpose: someone outside the building (parking
+// lot, sidewalk, neighboring shop) shouldn't be able to inject
+// content onto the TV.
+//   60m  — typical store interior + minor GPS drift
+//   75m  — max reported accuracy we'll trust; worse fix → reject
+const MAX_DISTANCE_METERS = 60;
+const MAX_ACCURACY_METERS = 75;
+
+// Haversine distance between two lat/lng points, in meters.
+// Earth radius 6371000m. Plenty accurate at the scales we care about
+// (a few km), no need for proper ellipsoid math.
+function haversineMeters(
+  lat1: number, lng1: number, lat2: number, lng2: number,
+): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -73,7 +97,7 @@ Deno.serve(async (req) => {
     const openaiKey = Deno.env.get("OPENAI_API_KEY")!;
 
     const body = await req.json();
-    const { imageBase64, mimeType, screenId, style, customerName, fp } = body;
+    const { imageBase64, mimeType, screenId, style, customerName, fp, lat, lng, accuracy } = body;
 
     // ── Validation ─────────────────────────────────────────────────────
     if (!imageBase64 || typeof imageBase64 !== "string") {
@@ -87,6 +111,21 @@ Deno.serve(async (req) => {
     }
     if (!fp || typeof fp !== "string" || fp.length < 16) {
       return json(400, { error: "fp (fingerprint) required" });
+    }
+    if (typeof lat !== "number" || typeof lng !== "number" || typeof accuracy !== "number") {
+      return json(400, {
+        error: "Necesitamos tu ubicación para verificar que estás en el negocio.",
+        code: "no_geo",
+      });
+    }
+    // Reject low-accuracy fixes early — a 200m-accuracy reading
+    // from someone outside the building could pass the distance
+    // check by luck. Force them to retry with high-precision GPS.
+    if (accuracy > MAX_ACCURACY_METERS) {
+      return json(400, {
+        error: "GPS impreciso. Activa la ubicación de alta precisión y vuelve a intentar.",
+        code: "low_accuracy",
+      });
     }
 
     // Resolve the client IP — Supabase fronts the function with a
@@ -105,13 +144,33 @@ Deno.serve(async (req) => {
     // ── Validate the screen exists & is approved ──────────────────────
     const { data: partner, error: partnerErr } = await admin
       .from("partners")
-      .select("id, status, business_name")
+      .select("id, status, business_name, lat, lng")
       .eq("id", screenId)
       .maybeSingle();
     if (partnerErr) return json(500, { error: "DB error", detail: partnerErr.message });
     if (!partner) return json(404, { error: "Pantalla no encontrada" });
     if (partner.status !== "approved") {
       return json(403, { error: "Esta pantalla no está activa todavía" });
+    }
+
+    // ── Geofence: customer must be physically at the business ─────────
+    // Without partner coords we can't enforce — block instead of
+    // silently letting selfies through. The admin needs to fix the
+    // partner's address (Partners admin → edit address geocodes).
+    if (partner.lat == null || partner.lng == null) {
+      console.error(`[transform-selfie] partner ${screenId} has no lat/lng`);
+      return json(409, {
+        error: "Esta pantalla aún no está configurada con su ubicación. Pídele al negocio que contacte soporte.",
+        code: "no_partner_geo",
+      });
+    }
+    const distanceM = haversineMeters(lat, lng, partner.lat, partner.lng);
+    if (distanceM > MAX_DISTANCE_METERS) {
+      console.log(`[transform-selfie] geofence reject: ${Math.round(distanceM)}m from ${partner.business_name}`);
+      return json(403, {
+        error: `Tienes que estar dentro de ${partner.business_name} para participar.`,
+        code: "too_far",
+      });
     }
 
     // ── Rate-limit gates (before paying OpenAI) ───────────────────────
