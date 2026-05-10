@@ -1,6 +1,15 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+
+// Bumped manually for now — when we have CI we'll inject the git SHA
+// at build time. Heartbeat sends this so admins can spot which TVs
+// are stuck on an old build (e.g. didn't reload after a deploy).
+const APP_VERSION = "2026.05.05";
+
+// Supabase Realtime broadcast channel name. Both player and admin
+// must use this exact format for commands to land.
+const COMMAND_CHANNEL = (screenId: string) => `screen-commands:${screenId}`;
 // Canvas en vez de SVG — Android WebView (Fully Kiosk) tiene
 // problemas renderizando SVGs inline. El canvas es universal.
 import { QRCodeCanvas } from "qrcode.react";
@@ -273,18 +282,69 @@ export default function PlayerPage() {
     };
   }, []);
 
+  // Track when the player mounted so heartbeat can send uptime.
+  // Used by admin Fleet Health to spot TVs that haven't rebooted in
+  // forever (likely accumulating decoder state) vs fresh restarts.
+  const mountedAtRef = useRef<number>(Date.now());
+
   // Explicit heartbeat — ping backend every 60s so Fleet Health can
   // distinguish "TV on, no ads" from "TV off". Independent from
-  // ad_logs which only fire when there are ads to play.
+  // ad_logs which only fire when there are ads to play. We attach
+  // uptime/version/ads_count so admins see what each TV is actually
+  // doing. ads.length lives in a ref because we don't want to re-arm
+  // the interval every time the ad list refetches.
+  const adsCountRef = useRef(0);
+  useEffect(() => { adsCountRef.current = ads.length; }, [ads.length]);
+
   useEffect(() => {
     if (!screenId) return;
     const ping = () => {
       if (!navigator.onLine) return;
-      supabase.rpc("ping_screen", { screen_id: screenId });
+      const uptimeSec = Math.floor((Date.now() - mountedAtRef.current) / 1000);
+      supabase.rpc("ping_screen", {
+        screen_id: screenId,
+        p_uptime_seconds: uptimeSec,
+        p_app_version: APP_VERSION,
+        p_ads_count: adsCountRef.current,
+      });
     };
     ping(); // immediate on mount
     const interval = setInterval(ping, 60_000);
     return () => clearInterval(interval);
+  }, [screenId]);
+
+  // Remote command channel — admin can push reload / clear-cache /
+  // force-fetch from the dashboard without anyone touching the TV.
+  // Uses Supabase Realtime broadcast (not Postgres changes) so
+  // commands deliver in <1s and don't cost a DB row.
+  useEffect(() => {
+    if (!screenId) return;
+    const channel = supabase
+      .channel(COMMAND_CHANNEL(screenId))
+      .on("broadcast", { event: "command" }, ({ payload }) => {
+        const cmd: string = payload?.cmd;
+        console.warn("[player] received remote command:", cmd);
+        switch (cmd) {
+          case "reload":
+            window.location.reload();
+            break;
+          case "clear-cache":
+            try { localStorage.clear(); } catch { /* ignore */ }
+            window.location.reload();
+            break;
+          case "force-fetch":
+            // Just refetch the ad list without reloading the page.
+            // Useful when admin pushes new content and wants TVs to
+            // pick it up immediately instead of waiting for the
+            // postgres_changes subscription to roundtrip.
+            fetchAdsRef.current?.();
+            break;
+          default:
+            console.warn("[player] unknown command:", cmd);
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [screenId]);
 
   // Auto-reload every 3h — prevents longevity bugs (memory leaks,
@@ -556,6 +616,13 @@ export default function PlayerPage() {
       setLoaded(true);
     }
   }, [screenId]);
+
+  // Stash latest fetchAds in a ref so the remote-command channel can
+  // call it without re-subscribing every time fetchAds's identity
+  // changes (every ad-list refetch). Saves a teardown/setup cycle on
+  // the realtime channel.
+  const fetchAdsRef = useRef<typeof fetchAds | null>(null);
+  useEffect(() => { fetchAdsRef.current = fetchAds; }, [fetchAds]);
 
   useEffect(() => { fetchAds(); }, [fetchAds]);
 

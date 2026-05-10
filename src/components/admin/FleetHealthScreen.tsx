@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAllPartners } from "@/hooks/useAdminData";
-import { Activity, RefreshCw, Loader2, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { Activity, RefreshCw, Loader2, CheckCircle2, AlertTriangle, XCircle, Power } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -22,6 +23,21 @@ interface ScreenHealth {
   last_seen: Date | null;
   impressions_24h: number;
   health: Health;
+  uptime_seconds: number | null;
+  app_version: string | null;
+  ads_count: number | null;
+  last_command: string | null;
+  last_command_at: Date | null;
+}
+
+// Format an uptime in seconds as the most-relevant unit (h/d). Used in
+// the table to flag long-running TVs that haven't rebooted in a while.
+function formatUptime(s: number | null): string {
+  if (!s || s <= 0) return "—";
+  const hrs = s / 3600;
+  if (hrs < 1) return `${Math.floor(s / 60)}m`;
+  if (hrs < 48) return `${hrs.toFixed(1)}h`;
+  return `${Math.floor(hrs / 24)}d`;
 }
 
 const HEALTH_MS = {
@@ -120,6 +136,7 @@ const FleetHealthScreen = () => {
       const lastSeen = heartbeat && impressionLast
         ? (heartbeat > impressionLast ? heartbeat : impressionLast)
         : heartbeat ?? impressionLast;
+      const lastCmdAt = (p as any).last_command_at ? new Date((p as any).last_command_at) : null;
       return {
         id: p.id,
         business_name: p.business_name,
@@ -127,6 +144,11 @@ const FleetHealthScreen = () => {
         last_seen: lastSeen,
         impressions_24h: countMap.get(p.id) ?? 0,
         health: p.status === "approved" ? classifyHealth(lastSeen) : "never",
+        uptime_seconds: (p as any).uptime_seconds ?? null,
+        app_version: (p as any).app_version ?? null,
+        ads_count: (p as any).ads_count ?? null,
+        last_command: (p as any).last_command ?? null,
+        last_command_at: lastCmdAt,
       };
     });
 
@@ -152,6 +174,36 @@ const FleetHealthScreen = () => {
     const t = setInterval(refresh, 60_000);
     return () => clearInterval(t);
   }, [refresh]);
+
+  // Per-screen "command in flight" state so we can spin the button
+  // until the realtime broadcast acks (or 3s timeout).
+  const [sending, setSending] = useState<Record<string, boolean>>({});
+
+  // Send a remote command to a single screen via Supabase Realtime
+  // broadcast. Mirrored audit trail goes through record_screen_command
+  // RPC so admins see "last reload: 2h ago" even if the broadcast was
+  // never received (e.g. TV was offline at send time).
+  const sendCommand = useCallback(
+    async (screenId: string, cmd: "reload" | "clear-cache" | "force-fetch", label: string) => {
+      setSending((s) => ({ ...s, [screenId]: true }));
+      try {
+        const channel = supabase.channel(`screen-commands:${screenId}`);
+        await channel.subscribe();
+        await channel.send({ type: "broadcast", event: "command", payload: { cmd } });
+        // Tear down — we only needed the channel to send. Persisting it
+        // would mean every admin click leaves a zombie subscription.
+        await supabase.removeChannel(channel);
+        // Audit trail (admin-only RPC, ignore failure — broadcast already went)
+        supabase.rpc("record_screen_command", { screen_id: screenId, command: cmd });
+        toast.success(`${label} enviado`);
+      } catch (e: any) {
+        toast.error(`Error al enviar ${label}: ${e?.message ?? "desconocido"}`);
+      } finally {
+        setSending((s) => ({ ...s, [screenId]: false }));
+      }
+    },
+    [],
+  );
 
   const approvedCount = rows.filter((r) => r.status === "approved").length;
   const onlineCount = rows.filter((r) => r.health === "online").length;
@@ -212,13 +264,17 @@ const FleetHealthScreen = () => {
               <TableHead>Pantalla</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead>Última actividad</TableHead>
+              <TableHead>Uptime</TableHead>
+              <TableHead>Versión</TableHead>
+              <TableHead className="text-right">Anuncios</TableHead>
               <TableHead className="text-right">Impresiones 24h</TableHead>
+              <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground py-12">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-12">
                   No hay pantallas registradas
                 </TableCell>
               </TableRow>
@@ -227,6 +283,7 @@ const FleetHealthScreen = () => {
                 const cfg = healthConfig[r.health];
                 const Icon = cfg.icon;
                 const isApproved = r.status === "approved";
+                const canCommand = isApproved && r.health !== "never";
                 return (
                   <TableRow key={r.id} className={!isApproved ? "opacity-50" : ""}>
                     <TableCell className="font-medium">
@@ -243,9 +300,39 @@ const FleetHealthScreen = () => {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {formatLastSeen(r.last_seen)}
+                      {r.last_command && r.last_command_at && (
+                        <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+                          {r.last_command} {formatLastSeen(r.last_command_at)}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm tabular-nums text-muted-foreground">
+                      {formatUptime(r.uptime_seconds)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {r.app_version ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {r.ads_count ?? "—"}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {r.impressions_24h.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!canCommand || !!sending[r.id]}
+                        onClick={() => sendCommand(r.id, "reload", "Reload")}
+                        title={canCommand ? "Reload remoto de la pantalla" : "TV nunca se ha conectado"}
+                      >
+                        {sending[r.id] ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Power className="h-3.5 w-3.5" />
+                        )}
+                        <span className="ml-1.5 hidden md:inline">Reload</span>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );
