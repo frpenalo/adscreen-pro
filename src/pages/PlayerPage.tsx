@@ -666,10 +666,25 @@ export default function PlayerPage() {
         selfieRows = selfies ?? [];
       }
 
+      // Append the row's id as a cache-buster query param to the
+      // media URL. Why: some storage paths reuse the same filename
+      // across renders (e.g. partner-sales-ads/{partnerId}.mp4 — the
+      // SalesAd that hung Softmedia even after we re-rendered with
+      // safe encoding, because Android WebView kept serving the old
+      // bytes from HTTP cache). The new ad row has a new id on every
+      // re-render, so this forces a fresh fetch. For rows that don't
+      // re-render (selfies, advertiser ads with unique paths) it's a
+      // no-op since the URL stays stable.
+      const withBuster = (url: string | null | undefined, id: string) => {
+        if (!url) return url ?? "";
+        const sep = url.includes("?") ? "&" : "?";
+        return `${url}${sep}v=${id}`;
+      };
+
       const generalList: Ad[] = (generalAds ?? []).map((row: any) => ({
         id: row.id,
         type: row.type,
-        final_media_path: row.final_media_path,
+        final_media_path: withBuster(row.final_media_path, row.id),
         qr_url: null, // never render a partner QR on a non-scoped ad
         metadata: row.metadata ?? null,
         kind: "ad",
@@ -677,7 +692,7 @@ export default function PlayerPage() {
       const localList: Ad[] = localAds.map((row: any) => ({
         id: row.id,
         type: row.type,
-        final_media_path: row.final_media_path,
+        final_media_path: withBuster(row.final_media_path, row.id),
         qr_url: row.qr_url ?? null,
         metadata: row.metadata ?? null,
         kind: "ad",
@@ -685,7 +700,7 @@ export default function PlayerPage() {
       const selfieList: Ad[] = selfieRows.map((row: any) => ({
         id: row.id,
         type: row.type,
-        final_media_path: row.final_media_path,
+        final_media_path: withBuster(row.final_media_path, row.id),
         qr_url: null,
         metadata: row.metadata ?? null,
         kind: "selfie",
