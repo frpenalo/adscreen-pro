@@ -417,17 +417,19 @@ export default function SelfiePage() {
 }
 
 // ── Loading screen ─────────────────────────────────────────────────────────
+// Wait is now ~1-2s — validation + insert. The actual AI generation
+// runs in the background after the server responds, so the customer
+// doesn't sit on this screen. Animation calibrated for the short
+// wait: progress bar fills over 5s (so it never looks stuck), tips
+// rotate but rarely get past the first one.
 function LoadingScreen() {
   const [tip, setTip] = useState(0);
   const TIPS = [
-    "Mezclando pixeles mágicos…",
-    "El AI está pensando…",
-    "Casi listo, no cierres la pantalla",
-    "La sorpresa está cerca",
-    "Esto vale la pena, prometido",
+    "Enviando tu foto…",
+    "Casi listo…",
   ];
   useEffect(() => {
-    const id = setInterval(() => setTip((t) => (t + 1) % TIPS.length), 6000);
+    const id = setInterval(() => setTip((t) => (t + 1) % TIPS.length), 2000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -437,12 +439,12 @@ function LoadingScreen() {
         <div className="text-7xl animate-pulse" aria-hidden>🔮</div>
         <div className="absolute inset-0 rounded-full blur-3xl bg-violet-500/40 -z-10" />
       </div>
-      <h2 className="text-2xl font-semibold mb-3 text-center">Generando tu sorpresa</h2>
+      <h2 className="text-2xl font-semibold mb-3 text-center">Preparando tu sorpresa</h2>
       <p className="text-sm text-white/60 text-center max-w-xs min-h-[2.5rem]">
         {TIPS[tip]}
       </p>
       <div className="mt-10 w-48 h-1 rounded-full bg-white/10 overflow-hidden">
-        <div className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 animate-[loading_45s_linear]" style={{ animation: "loading 45s linear forwards" }} />
+        <div className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500" style={{ animation: "loading 5s linear forwards" }} />
       </div>
       <style>{`@keyframes loading { from { width: 0% } to { width: 95% } }`}</style>
     </div>

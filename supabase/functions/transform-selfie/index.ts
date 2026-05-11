@@ -185,13 +185,19 @@ Deno.serve(async (req) => {
     }
 
     // ── Rate-limit gates (before paying OpenAI) ───────────────────────
+    // Rate limits count selfies in flight (status='draft') + visible
+    // (status='published'). Failed selfies (status='rejected') do NOT
+    // count, so a customer whose AI call failed can retry without
+    // burning a quota slot.
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const countableStatuses = ["draft", "published"];
 
     // Layer 1 — per-fingerprint
     const { count: fpCount } = await admin
       .from("ads")
       .select("id", { count: "exact", head: true })
       .eq("kind", "selfie")
+      .in("status", countableStatuses)
       .gte("created_at", since24h)
       .eq("metadata->>fp" as any, fp);
     if ((fpCount ?? 0) >= LIMIT_PER_FP_24H) {
@@ -206,6 +212,7 @@ Deno.serve(async (req) => {
       .from("ads")
       .select("id", { count: "exact", head: true })
       .eq("kind", "selfie")
+      .in("status", countableStatuses)
       .gte("created_at", since24h)
       .eq("metadata->>ip" as any, ip);
     if ((ipCount ?? 0) >= LIMIT_PER_IP_24H) {
@@ -236,89 +243,139 @@ Deno.serve(async (req) => {
         .in("id", ids);
     }
 
-    // ── Generate via gpt-image-2 ──────────────────────────────────────
-    const prompt = STYLE_PROMPTS[style];
-    const imageBytes = Uint8Array.from(atob(imageBase64), (c) => c.charCodeAt(0));
-    const imageBlob = new Blob([imageBytes], { type: mimeType || "image/jpeg" });
-
-    const formData = new FormData();
-    formData.append("model", "gpt-image-2");
-    formData.append("image", imageBlob, "input.jpg");
-    formData.append("prompt", prompt);
-    formData.append("size", "1024x1024");
-    formData.append("quality", "low"); // fastest tier — selfies don't need ultra-HQ
-    formData.append("n", "1");
-
-    const startedAt = Date.now();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90_000);
-    let apiResponse: Response;
-    try {
-      apiResponse = await fetch("https://api.openai.com/v1/images/edits", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${openaiKey}` },
-        body: formData,
-        signal: controller.signal,
-      });
-    } catch (e) {
-      clearTimeout(timeoutId);
-      if ((e as Error).name === "AbortError") {
-        console.error("[transform-selfie] gpt-image-2 timed out after 90s");
-        return json(504, { error: "La transformación tardó demasiado. Intenta de nuevo." });
-      }
-      throw e;
-    }
-    clearTimeout(timeoutId);
-    console.log(`[transform-selfie] gpt-image-2 took ${Date.now() - startedAt}ms, status=${apiResponse.status}`);
-
-    if (!apiResponse.ok) {
-      const errText = await apiResponse.text();
-      console.error("[transform-selfie] OpenAI error:", apiResponse.status, errText);
-      return json(502, { error: "El AI rechazó la imagen. Intenta otra foto." });
-    }
-    const data = await apiResponse.json();
-    const b64: string | null = data.data?.[0]?.b64_json ?? null;
-    if (!b64) {
-      return json(502, { error: "El AI no devolvió imagen. Intenta de nuevo." });
-    }
-
-    // ── Upload to storage + insert ad row ─────────────────────────────
-    const path = `selfies/${screenId}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.png`;
-    const buffer = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-    const { error: uploadErr } = await admin.storage
-      .from("ad-media")
-      .upload(path, buffer, { contentType: "image/png" });
-    if (uploadErr) {
-      console.error("[transform-selfie] upload failed:", uploadErr);
-      return json(500, { error: "Error guardando la imagen" });
-    }
-    const { data: pub } = admin.storage.from("ad-media").getPublicUrl(path);
-
+    // ── Insert placeholder row (status='draft') BEFORE the AI call ────
+    // The customer's request returns success immediately after this
+    // insert — they don't wait for the 45-90s of gpt-image-2. The
+    // player ignores status='draft' rows, so nothing appears on the
+    // TV until the background task completes and flips to 'published'.
+    //
+    // Two reasons to insert before the AI call (rather than after):
+    //   1. Rate-limit counting works for fast parallel requests
+    //      because the row exists immediately
+    //   2. If the AI call or upload fails, we can surface the failure
+    //      by flipping status to 'rejected' instead of swallowing it
     const expiresAt = new Date(Date.now() + SELFIE_EXPIRES_MINUTES * 60 * 1000).toISOString();
     const cleanName = (customerName || "").toString().trim().slice(0, 40) || null;
 
-    const { error: insertErr } = await admin.from("ads").insert({
-      kind: "selfie",
-      type: "image",
-      status: "published",
-      screen_id: screenId,
-      advertiser_id: screenId, // selfies aren't owned by an advertiser; reuse screenId so existing FKs stay happy
-      final_media_path: pub.publicUrl,
-      customer_name: cleanName,
-      style,
-      expires_at: expiresAt,
-      metadata: { fp, ip, business_name: partner.business_name },
-    } as any);
-    if (insertErr) {
-      console.error("[transform-selfie] insert failed:", insertErr);
+    const { data: insertedRow, error: insertErr } = await admin
+      .from("ads")
+      .insert({
+        kind: "selfie",
+        type: "image",
+        status: "draft",                 // hidden from player until AI completes
+        screen_id: screenId,
+        advertiser_id: screenId,
+        final_media_path: "",            // filled in by the background task
+        customer_name: cleanName,
+        style,
+        expires_at: expiresAt,
+        metadata: { fp, ip, business_name: partner.business_name },
+      } as any)
+      .select("id")
+      .single();
+    if (insertErr || !insertedRow) {
+      console.error("[transform-selfie] placeholder insert failed:", insertErr);
       return json(500, { error: "Error registrando la selfie" });
     }
+    const adId = (insertedRow as any).id as string;
+
+    // ── Background task: AI + upload + flip status to published ───────
+    // EdgeRuntime.waitUntil keeps the function alive until this
+    // promise settles, even after the HTTP response is sent. Standard
+    // pattern for Supabase Edge Functions doing post-response work.
+    const backgroundTask = async () => {
+      try {
+        const prompt = STYLE_PROMPTS[style];
+        const imageBytes = Uint8Array.from(atob(imageBase64), (c) => c.charCodeAt(0));
+        const imageBlob = new Blob([imageBytes], { type: mimeType || "image/jpeg" });
+
+        const formData = new FormData();
+        formData.append("model", "gpt-image-2");
+        formData.append("image", imageBlob, "input.jpg");
+        formData.append("prompt", prompt);
+        formData.append("size", "1024x1024");
+        formData.append("quality", "low");
+        formData.append("n", "1");
+
+        const startedAt = Date.now();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 90_000);
+        let apiResponse: Response;
+        try {
+          apiResponse = await fetch("https://api.openai.com/v1/images/edits", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${openaiKey}` },
+            body: formData,
+            signal: controller.signal,
+          });
+        } catch (e) {
+          clearTimeout(timeoutId);
+          if ((e as Error).name === "AbortError") {
+            console.error(`[transform-selfie] gpt-image-2 timeout for ad ${adId}`);
+          } else {
+            console.error(`[transform-selfie] gpt-image-2 fetch error for ad ${adId}:`, e);
+          }
+          await admin.from("ads").update({ status: "rejected" }).eq("id", adId);
+          return;
+        }
+        clearTimeout(timeoutId);
+        console.log(`[transform-selfie] ad ${adId}: gpt-image-2 took ${Date.now() - startedAt}ms, status=${apiResponse.status}`);
+
+        if (!apiResponse.ok) {
+          const errText = await apiResponse.text();
+          console.error(`[transform-selfie] ad ${adId}: OpenAI error ${apiResponse.status}: ${errText}`);
+          await admin.from("ads").update({ status: "rejected" }).eq("id", adId);
+          return;
+        }
+        const apiData = await apiResponse.json();
+        const b64: string | null = apiData.data?.[0]?.b64_json ?? null;
+        if (!b64) {
+          console.error(`[transform-selfie] ad ${adId}: no b64 in response`);
+          await admin.from("ads").update({ status: "rejected" }).eq("id", adId);
+          return;
+        }
+
+        const path = `selfies/${screenId}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.png`;
+        const buffer = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const { error: uploadErr } = await admin.storage
+          .from("ad-media")
+          .upload(path, buffer, { contentType: "image/png" });
+        if (uploadErr) {
+          console.error(`[transform-selfie] ad ${adId}: upload failed:`, uploadErr);
+          await admin.from("ads").update({ status: "rejected" }).eq("id", adId);
+          return;
+        }
+        const { data: pub } = admin.storage.from("ad-media").getPublicUrl(path);
+
+        // Flip the placeholder to published. The player's
+        // postgres_changes subscription fires here → refetch → the
+        // selfie shows up on the TV within seconds of this UPDATE.
+        const { error: updateErr } = await admin
+          .from("ads")
+          .update({ status: "published", final_media_path: pub.publicUrl })
+          .eq("id", adId);
+        if (updateErr) {
+          console.error(`[transform-selfie] ad ${adId}: update failed:`, updateErr);
+          return;
+        }
+        console.log(`[transform-selfie] ad ${adId}: published successfully`);
+      } catch (err) {
+        console.error(`[transform-selfie] ad ${adId}: unexpected background error:`, err);
+        // Best-effort flip to rejected; ignore failures here.
+        await admin.from("ads").update({ status: "rejected" }).eq("id", adId).catch(() => undefined);
+      }
+    };
+
+    // Edge runtime keeps the function alive until backgroundTask
+    // resolves, but the response below ships to the client right
+    // now (typically ~1s after the customer hit submit).
+    // @ts-ignore EdgeRuntime is a Supabase Deno global, not in @types
+    EdgeRuntime.waitUntil(backgroundTask());
 
     return json(200, {
       success: true,
+      adId,
       expiresAt,
-      // Don't return the image URL — surprise mode means the customer
-      // doesn't preview. The TV reveal is the moment.
       message: "¡Listo! Mira la TV.",
     });
   } catch (err: any) {
