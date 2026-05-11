@@ -217,7 +217,25 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
           }}
           src={ad.final_media_path}
           className="w-full h-full object-contain"
-          preload="auto"
+          // preload="metadata" instead of "auto". Background:
+          // confirmed freeze pattern at Softmedia (TCL Google TV
+          // running Fully Kiosk) where the same SalesAd frame
+          // froze within ~1h even after we fixed the H.264 encoding
+          // and added a cache-buster. Same-frame freeze regardless
+          // of encoding pointed to decoder pressure, not the file.
+          //
+          // With preload="auto", the browser pre-decodes EVERY <video>
+          // in the DOM into memory — even hidden ones. The player
+          // keeps all ads mounted (opacity 0 for inactive) for the
+          // crossfade. On a TV-class WebView with 1-2 hardware
+          // decoders, that exceeds the decoder budget after enough
+          // rotations and one freezes mid-frame.
+          //
+          // "metadata" only fetches the container header (duration,
+          // dimensions, codec) — frames are decoded lazily when
+          // play() is called. duration is still known so the safety
+          // timer and freeze detector work the same way.
+          preload="metadata"
           muted
           playsInline
           onEnded={onVideoEnded}
