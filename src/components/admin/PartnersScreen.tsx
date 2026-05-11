@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLang } from "@/contexts/LangContext";
 import { useAllPartners } from "@/hooks/useAdminData";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Pencil, RefreshCw } from "lucide-react";
+import { Pencil, RefreshCw, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import "leaflet/dist/leaflet.css";
 
 const PartnersScreen = () => {
   const { t } = useLang();
@@ -19,32 +20,137 @@ const PartnersScreen = () => {
   const queryClient = useQueryClient();
   const [actionPartner, setActionPartner] = useState<{ id: string; action: "approve" | "reject" } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
-  const [editPartner, setEditPartner] = useState<{ id: string; address: string } | null>(null);
+  // Extended with lat/lng so the edit dialog can show a map and let
+  // admin fine-tune the location after geocoding. Nominatim's default
+  // for the address can be 50-200m off (strip malls, plazas), which
+  // breaks the 60m selfie geofence — manual pin fixes it once.
+  const [editPartner, setEditPartner] = useState<{ id: string; address: string; lat: number | null; lng: number | null } | null>(null);
   const [rerendering, setRerendering] = useState<string | null>(null); // partner id being re-rendered
+  const [geocodingAddress, setGeocodingAddress] = useState(false);
+  // Tracks whether the admin dragged the marker manually. If so, we
+  // persist those coords as-is on save instead of re-geocoding from
+  // the address text and overwriting the manual adjustment.
+  const manuallyAdjustedRef = useRef(false);
+  // Leaflet map + marker refs (imperative API — same pattern as
+  // ScreensMapScreen). Held in refs because they don't drive React
+  // render; they're mutable map objects living in the DOM.
+  const editMapRef = useRef<HTMLDivElement | null>(null);
+  const editMapInstanceRef = useRef<any>(null);
+  const editMarkerRef = useRef<any>(null);
+
+  // Geocode an address via Nominatim and move the map marker there.
+  // Used by the "Buscar dirección" button. Manual adjustment flag is
+  // cleared so a subsequent save uses these fresh coords.
+  const geocodeAndMoveMarker = async () => {
+    if (!editPartner?.address) return;
+    setGeocodingAddress(true);
+    try {
+      const clean = editPartner.address
+        .replace(/,?\s*(United States|Estados Unidos.*?)$/i, "")
+        .replace(/(\d{5})-\d{4}/, "$1")
+        .trim();
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(clean)}&limit=1&countrycodes=us`,
+        { headers: { "Accept-Language": "es" } },
+      );
+      const data = await res.json();
+      if (data.length === 0) {
+        toast.error("No encontré esa dirección. Revisa el formato.");
+        return;
+      }
+      const lat = parseFloat(data[0].lat);
+      const lng = parseFloat(data[0].lon);
+      setEditPartner((ep) => (ep ? { ...ep, lat, lng } : null));
+      manuallyAdjustedRef.current = false;
+      if (editMapInstanceRef.current && editMarkerRef.current) {
+        editMarkerRef.current.setLatLng([lat, lng]);
+        editMapInstanceRef.current.setView([lat, lng], 18);
+      }
+    } catch {
+      toast.error("Error consultando el geocoder. Intenta de nuevo.");
+    } finally {
+      setGeocodingAddress(false);
+    }
+  };
 
   const handleSaveAddress = async () => {
     if (!editPartner) return;
-    // Geocodificar para obtener coordenadas
-    let lat: number | null = null;
-    let lng: number | null = null;
-    try {
-      const clean = editPartner.address.replace(/,?\s*(United States|Estados Unidos.*?)$/i, "").replace(/(\d{5})-\d{4}/, "$1").trim();
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(clean)}&limit=1&countrycodes=us`);
-      const data = await res.json();
-      if (data.length > 0) { lat = parseFloat(data[0].lat); lng = parseFloat(data[0].lon); }
-    } catch { /* silent */ }
-
     const updates: Record<string, any> = { address: editPartner.address };
-    if (lat !== null) { updates.lat = lat; updates.lng = lng; }
+    if (editPartner.lat !== null && editPartner.lng !== null) {
+      updates.lat = editPartner.lat;
+      updates.lng = editPartner.lng;
+    }
 
     const { error } = await supabase.from("partners").update(updates).eq("id", editPartner.id);
     if (error) toast.error(error.message);
     else {
-      toast.success(lat !== null ? "Dirección y coordenadas actualizadas" : "Dirección guardada (sin coordenadas)");
+      toast.success(
+        manuallyAdjustedRef.current
+          ? "Dirección y posición exacta guardadas"
+          : (editPartner.lat !== null ? "Dirección y coordenadas actualizadas" : "Dirección guardada (sin coordenadas)"),
+      );
       queryClient.invalidateQueries({ queryKey: ["admin-partners"] });
     }
     setEditPartner(null);
   };
+
+  // Initialize the Leaflet map inside the edit dialog. Runs when the
+  // dialog opens (editPartner changes from null → a partner) and tears
+  // down when it closes. Uses the same imperative L.map() pattern as
+  // ScreensMapScreen so we have one consistent way of using Leaflet
+  // in the codebase.
+  useEffect(() => {
+    if (!editPartner || !editMapRef.current) return;
+
+    // Default center: Raleigh NC (where most partners are) if the
+    // partner has no coords yet. Once they enter address + geocode
+    // or drag, the marker takes over.
+    const initialLat = editPartner.lat ?? 35.7796;
+    const initialLng = editPartner.lng ?? -78.6382;
+
+    let cleanedUp = false;
+    import("leaflet").then((L) => {
+      if (cleanedUp || !editMapRef.current) return;
+      // Fix default marker icon URLs (broken by bundlers)
+      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+      });
+
+      const map = L.map(editMapRef.current, {
+        center: [initialLat, initialLng],
+        zoom: editPartner.lat !== null ? 18 : 11,
+      });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }).addTo(map);
+
+      const marker = L.marker([initialLat, initialLng], { draggable: true }).addTo(map);
+      marker.on("dragend", () => {
+        const pos = marker.getLatLng();
+        manuallyAdjustedRef.current = true;
+        setEditPartner((ep) => (ep ? { ...ep, lat: pos.lat, lng: pos.lng } : null));
+      });
+
+      editMapInstanceRef.current = map;
+      editMarkerRef.current = marker;
+    });
+
+    return () => {
+      cleanedUp = true;
+      if (editMapInstanceRef.current) {
+        editMapInstanceRef.current.remove();
+        editMapInstanceRef.current = null;
+        editMarkerRef.current = null;
+      }
+      manuallyAdjustedRef.current = false;
+    };
+    // Only re-run when the dialog opens for a different partner.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editPartner?.id]);
 
   const handleRerender = async (partnerId: string) => {
     setRerendering(partnerId);
@@ -210,7 +316,12 @@ const PartnersScreen = () => {
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setEditPartner({ id: p.id, address: (p as any).address ?? "" })} className="text-muted-foreground hover:text-primary" title={(p as any).address || "Sin dirección"}>
+                    <button onClick={() => setEditPartner({
+                      id: p.id,
+                      address: (p as any).address ?? "",
+                      lat: (p as any).lat ?? null,
+                      lng: (p as any).lng ?? null,
+                    })} className="text-muted-foreground hover:text-primary" title={(p as any).address || "Sin dirección"}>
                       <Pencil className="h-4 w-4" />
                     </button>
                     {p.status === "approved" && (
@@ -241,16 +352,51 @@ const PartnersScreen = () => {
       </div>
 
       <Dialog open={!!editPartner} onOpenChange={() => setEditPartner(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Editar dirección</DialogTitle>
-            <DialogDescription>Ingresa la dirección completa del negocio para que aparezca en el mapa.</DialogDescription>
+            <DialogTitle>Editar dirección y ubicación</DialogTitle>
+            <DialogDescription>
+              Ingresa la dirección, búscala en el mapa, y arrastra el pin al punto exacto del negocio. La ubicación precisa es necesaria para el geofence de selfies (60m de tolerancia).
+            </DialogDescription>
           </DialogHeader>
-          <Input
-            value={editPartner?.address ?? ""}
-            onChange={(e) => setEditPartner(ep => ep ? { ...ep, address: e.target.value } : null)}
-            placeholder="123 Main St, Raleigh, NC 27601"
-          />
+
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                value={editPartner?.address ?? ""}
+                onChange={(e) => setEditPartner(ep => ep ? { ...ep, address: e.target.value } : null)}
+                placeholder="123 Main St, Raleigh, NC 27601"
+              />
+              <Button
+                variant="outline"
+                onClick={geocodeAndMoveMarker}
+                disabled={!editPartner?.address || geocodingAddress}
+                className="flex-shrink-0"
+              >
+                {geocodingAddress ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                <span className="ml-1.5">Buscar</span>
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              {editPartner?.lat !== null && editPartner?.lng !== null
+                ? "📍 Arrastra el pin para ajustar al punto exacto donde está el negocio (entrada del local, no la calle)."
+                : "Escribe la dirección y dale a Buscar para ubicar en el mapa."}
+            </p>
+
+            <div
+              ref={editMapRef}
+              className="w-full rounded-md border border-border overflow-hidden"
+              style={{ height: 380 }}
+            />
+
+            {editPartner?.lat !== null && editPartner?.lng !== null && (
+              <p className="text-[10px] text-muted-foreground/70 font-mono">
+                {editPartner.lat?.toFixed(6)}, {editPartner.lng?.toFixed(6)}
+              </p>
+            )}
+          </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditPartner(null)}>Cancelar</Button>
             <Button onClick={handleSaveAddress}>Guardar</Button>
