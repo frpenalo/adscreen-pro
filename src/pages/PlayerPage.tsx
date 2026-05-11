@@ -702,27 +702,25 @@ export default function PlayerPage() {
         [shuffledSelfies[i], shuffledSelfies[j]] = [shuffledSelfies[j], shuffledSelfies[i]];
       }
 
-      // Cap how many selfies go into this rotation:
-      //   - When ads are abundant (>=10), allow 1 selfie per
-      //     SELFIE_EVERY_N_ADS ads — keeps paid-ad airtime ~90%
-      //   - When ads are scarce (<10), still allow at least 1 selfie
-      //     so partners with few ads don't see selfies silently dropped
-      //
-      // The previous code used `(i+1) % 10 === 0` which never fires
-      // when ads.length < 10 — confirmed bug at Softmedia (2 ads, no
-      // selfies inserted despite 3 active in DB).
+      // How many selfies go into this rotation:
+      //   - Many ads (>=N): cap at floor(ads/N) → keeps paid-ad airtime
+      //     ~90% even when many selfies are queued
+      //   - Few ads (<N): include ALL active selfies → variety matters
+      //     more than airtime cap (there are no paid ads to dilute).
+      //     Without this, a partner with 2 ads sees the same single
+      //     selfie loop forever until a refetch happens.
       const ads: Ad[] = [...generalList, ...localList];
-      const maxSelfiesThisRotation = Math.max(
-        1,
-        Math.floor(ads.length / SELFIE_EVERY_N_ADS),
-      );
+      const maxSelfiesThisRotation = ads.length >= SELFIE_EVERY_N_ADS
+        ? Math.max(1, Math.floor(ads.length / SELFIE_EVERY_N_ADS))
+        : shuffledSelfies.length;
       const selfiesToUse = shuffledSelfies.slice(
         0,
         Math.min(shuffledSelfies.length, maxSelfiesThisRotation),
       );
       // Spacing — distribute selfies evenly through the ad list.
       // With 50 ads + 3 selfies → interval ≈ 17 (one selfie every 17 ads).
-      // With 2 ads + 1 selfie → interval = 2 (selfie at the end).
+      // With 2 ads + 3 selfies → interval = 1 (selfie after every ad,
+      // plus trailing selfies appended below).
       const interval = selfiesToUse.length > 0
         ? Math.max(1, Math.ceil(ads.length / selfiesToUse.length))
         : SELFIE_EVERY_N_ADS;
@@ -738,10 +736,13 @@ export default function PlayerPage() {
           interleaved.push(selfiesToUse[selfieIdx++]);
         }
       }
-      // Edge case: zero ads at all but selfies exist (rare). Append
-      // the selfies so the partner's screen has SOMETHING to show.
-      if (ads.length === 0 && shuffledSelfies.length > 0) {
-        interleaved.push(...shuffledSelfies);
+      // Append any selfies that didn't fit the modulo pattern. When
+      // ads are scarce and selfies abundant (e.g. 2 ads + 3 selfies
+      // + interval=1 gives ad,selfie,ad,selfie — third selfie is
+      // trailing), this puts the remainder at the end so all active
+      // selfies appear at least once per rotation.
+      while (selfieIdx < selfiesToUse.length) {
+        interleaved.push(selfiesToUse[selfieIdx++]);
       }
 
       setAds(interleaved);
