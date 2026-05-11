@@ -54,7 +54,11 @@ const ALLOWED_STYLES = Object.keys(STYLE_PROMPTS);
 const LIMIT_PER_FP_24H = 3;
 const LIMIT_PER_IP_24H = 5;
 const MAX_ACTIVE_PER_SCREEN = 8;
-const SELFIE_EXPIRES_HOURS = 8;
+// Selfies expire 60 minutes after creation — covers a typical
+// barbershop visit (30-60 min) with a small buffer. Originally 8h,
+// but that left selfies on the TV long after the customer had gone
+// home, which killed the "look, that's John!" moment.
+const SELFIE_EXPIRES_MINUTES = 60;
 
 // Geofence — the customer MUST be physically inside the partner's
 // business. Tight on purpose: someone outside the building (parking
@@ -290,7 +294,7 @@ Deno.serve(async (req) => {
     }
     const { data: pub } = admin.storage.from("ad-media").getPublicUrl(path);
 
-    const expiresAt = new Date(Date.now() + SELFIE_EXPIRES_HOURS * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + SELFIE_EXPIRES_MINUTES * 60 * 1000).toISOString();
     const cleanName = (customerName || "").toString().trim().slice(0, 40) || null;
 
     const { error: insertErr } = await admin.from("ads").insert({

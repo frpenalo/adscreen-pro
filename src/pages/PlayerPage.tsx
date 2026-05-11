@@ -34,13 +34,29 @@ interface Ad {
 }
 
 type WidgetType = "clock" | "weather" | "joke" | "sports" | "news" | "selfie-cta";
-const WIDGETS: WidgetType[] = ["clock", "weather", "joke", "sports", "news", "selfie-cta"];
+// selfie-cta repeated 3x so the QR call-to-action sits at ~33% of
+// widget slots (vs 16% if it were just one entry). The QR is what
+// drives new customers to scan and participate — making it more
+// frequent than the ambient widgets (clock/weather) is the right
+// trade-off for a conversion-focused screen.
+const WIDGETS: WidgetType[] = [
+  "clock",
+  "weather",
+  "joke",
+  "sports",
+  "news",
+  "selfie-cta",
+  "selfie-cta",
+  "selfie-cta",
+];
 
-// Ratio for interleaving customer selfies into the ad rotation. With
-// the default of 5, the visible loop is "ad ad ad ad ad SELFIE ad ad
-// ad ad ad SELFIE...". If there are no active selfies, the slot just
-// becomes another ad — paid ads never lose airtime to empty slots.
-const SELFIE_EVERY_N_ADS = 5;
+// Ratio for interleaving customer selfies into the ad rotation.
+// Bumped 5 → 10 to keep paid-ad airtime closer to 90% even when the
+// selfie pool is full. With ~50 ads in rotation, this yields 5 selfie
+// slots per cycle. If there are more active selfies than slots, the
+// extra ones wait for the next refetch (postgres_changes triggers
+// re-shuffle so unseen ones get their turn).
+const SELFIE_EVERY_N_ADS = 10;
 const WIDGET_DURATION = 10000;
 const IMAGE_DURATION = 10000;
 const DEFAULT_WIDGET_FREQUENCY = 3;
@@ -676,10 +692,23 @@ export default function PlayerPage() {
         customer_name: row.customer_name ?? null,
       }));
 
+      // Shuffle the selfie pool so each refetch gives a different
+      // order — when there are more active selfies than slots in a
+      // rotation, the unseen ones get their turn in the next cycle.
+      // Fisher-Yates. No leftover append: if a selfie didn't fit in
+      // this rotation, it waits. Keeps paid-ad airtime stable and
+      // prevents the same selfie from playing back-to-back.
+      const shuffledSelfies = [...selfieList];
+      for (let i = shuffledSelfies.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledSelfies[i], shuffledSelfies[j]] = [shuffledSelfies[j], shuffledSelfies[i]];
+      }
+
       // Interleave: every Nth ad slot becomes a selfie if any are
       // available. If we run out of selfies, those slots stay as ads.
-      // This keeps paid ads' airtime intact when the screen has zero
-      // active selfies.
+      // Selfies that don't fit are intentionally DROPPED from this
+      // rotation — the next fetchAds (triggered by postgres_changes
+      // or a refresh) will re-shuffle and give them a chance.
       const ads: Ad[] = [...generalList, ...localList];
       const interleaved: Ad[] = [];
       let selfieIdx = 0;
@@ -687,14 +716,10 @@ export default function PlayerPage() {
         interleaved.push(ads[i]);
         if (
           (i + 1) % SELFIE_EVERY_N_ADS === 0 &&
-          selfieIdx < selfieList.length
+          selfieIdx < shuffledSelfies.length
         ) {
-          interleaved.push(selfieList[selfieIdx++]);
+          interleaved.push(shuffledSelfies[selfieIdx++]);
         }
-      }
-      // Any leftover selfies (more selfies than slots) — append at end
-      while (selfieIdx < selfieList.length) {
-        interleaved.push(selfieList[selfieIdx++]);
       }
 
       setAds(interleaved);

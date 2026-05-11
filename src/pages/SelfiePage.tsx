@@ -249,7 +249,7 @@ export default function SelfiePage() {
           </div>
 
           <p className="text-center text-[10px] text-white/30 mt-8 leading-relaxed">
-            Al participar aceptas que tu transformación aparezca temporalmente en la pantalla del local. Caduca en 8h.
+            Al participar aceptas que tu transformación aparezca temporalmente en la pantalla del local. Caduca en 1 hora.
           </p>
         </div>
       </div>
@@ -346,7 +346,7 @@ export default function SelfiePage() {
         <h2 className="text-3xl font-bold mb-2 text-center">¡Listo!</h2>
         <p className="text-center text-white/70 mb-1">Mira la TV</p>
         <p className="text-center text-sm text-white/50 mb-8 max-w-xs">
-          Aparecerás en {businessName} en los próximos minutos. Caduca en 8h.
+          Aparecerás en {businessName} en los próximos minutos. Caduca en 1 hora.
         </p>
         <button
           onClick={() => {
