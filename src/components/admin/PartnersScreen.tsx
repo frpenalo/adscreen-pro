@@ -379,7 +379,7 @@ const PartnersScreen = () => {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              {editPartner?.lat !== null && editPartner?.lng !== null
+              {editPartner && editPartner.lat !== null && editPartner.lng !== null
                 ? "📍 Arrastra el pin para ajustar al punto exacto donde está el negocio (entrada del local, no la calle)."
                 : "Escribe la dirección y dale a Buscar para ubicar en el mapa."}
             </p>
@@ -390,9 +390,9 @@ const PartnersScreen = () => {
               style={{ height: 380 }}
             />
 
-            {editPartner?.lat !== null && editPartner?.lng !== null && (
+            {editPartner && editPartner.lat !== null && editPartner.lng !== null && (
               <p className="text-[10px] text-muted-foreground/70 font-mono">
-                {editPartner.lat?.toFixed(6)}, {editPartner.lng?.toFixed(6)}
+                {editPartner.lat.toFixed(6)}, {editPartner.lng.toFixed(6)}
               </p>
             )}
           </div>
