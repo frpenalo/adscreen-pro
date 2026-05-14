@@ -191,6 +191,42 @@ const PartnersScreen = () => {
 
     // When approving: sync GoAffPro + auto-publish active sales template
     if (action === "approve") {
+      // 0. Backfill geo coords if partner has address but no lat/lng.
+      //    Cause: AddressAutocomplete on signup only sets coords when
+      //    the user clicks a dropdown suggestion. Partners who typed
+      //    their address without selecting get registered with
+      //    lat=null, lng=null — which then makes the 60m selfie
+      //    geofence reject everyone. This step auto-geocodes via
+      //    Nominatim so approval always leaves the partner with
+      //    valid coords. Admin can still fine-tune later with the
+      //    map-picker in the address editor.
+      try {
+        const { data: existing } = await supabase
+          .from("partners")
+          .select("address, lat, lng")
+          .eq("id", id)
+          .single();
+        const hasNoCoords = existing && (existing.lat == null || existing.lng == null);
+        if (hasNoCoords && (existing as any)?.address) {
+          const clean = (existing as any).address
+            .replace(/,?\s*(United States|Estados Unidos.*?)$/i, "")
+            .replace(/(\d{5})-\d{4}/, "$1")
+            .trim();
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(clean)}&limit=1&countrycodes=us`,
+            { headers: { "Accept-Language": "es" } },
+          );
+          const data = await res.json();
+          if (data.length > 0) {
+            const lat = parseFloat(data[0].lat);
+            const lng = parseFloat(data[0].lon);
+            await supabase.from("partners").update({ lat, lng }).eq("id", id);
+          }
+        }
+      } catch {
+        // non-critical — admin can fix manually via the map-picker
+      }
+
       // 1. Sync GoAffPro (non-critical)
       try {
         const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-goaffpro-affiliate`;
