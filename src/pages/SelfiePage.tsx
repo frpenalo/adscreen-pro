@@ -114,19 +114,27 @@ export default function SelfiePage() {
   const [businessName, setBusinessName] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch the partner's business name to show on the success screen
-  // ("Aparecerás en Barber Shop X"). Public read — no auth needed.
+  // Fetch the partner's business name to show on the success screen.
+  // Uses a SECURITY DEFINER RPC instead of a direct table read because
+  // RLS on `partners` only allows authenticated users to SELECT —
+  // anon customers scanning the QR would get null back and see
+  // "Pantalla no encontrada" even for valid partners. The RPC exposes
+  // only business_name + status (no contact info, no financial data).
   useEffect(() => {
     if (!screenId) return;
     supabase
-      .from("partners")
-      .select("business_name, status")
-      .eq("id", screenId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data) setError("Pantalla no encontrada");
-        else if (data.status !== "approved") setError("Esta pantalla no está activa todavía");
-        else setBusinessName(data.business_name);
+      .rpc("get_partner_for_selfie", { p_id: screenId })
+      .then(({ data, error: rpcErr }) => {
+        const row = Array.isArray(data) ? data[0] : null;
+        if (rpcErr || !row) {
+          setError("Pantalla no encontrada");
+          return;
+        }
+        if (row.status !== "approved") {
+          setError("Esta pantalla no está activa todavía");
+          return;
+        }
+        setBusinessName(row.business_name);
       });
   }, [screenId]);
 
