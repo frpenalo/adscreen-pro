@@ -19,6 +19,7 @@ import JokeWidget from "@/components/player/JokeWidget";
 import SportsWidget from "@/components/player/SportsWidget";
 import NewsWidget from "@/components/player/NewsWidget";
 import SelfieWidget from "@/components/player/SelfieWidget";
+import CinematicReveal from "@/components/selfie/CinematicReveal";
 
 interface Ad {
   id: string;
@@ -31,6 +32,7 @@ interface Ad {
   // to avoid logging selfies as paid impressions.
   kind?: "ad" | "selfie";
   customer_name?: string | null;
+  customer_title?: string | null;
 }
 
 type WidgetType = "clock" | "weather" | "joke" | "sports" | "news" | "selfie-cta";
@@ -512,13 +514,19 @@ export default function PlayerPage() {
       clearImageTimer();
       // Selfies show shorter (5s vs 10s for ads). They're filler
       // content; the customer wants a quick reveal moment, not an
-      // extended display. Also keeps the rotation snappy when many
-      // selfies are queued.
-      const duration = ad.kind === "selfie" ? 5000 : IMAGE_DURATION;
+      // extended display. EXCEPT: fresh selfies (first time appearing
+      // after AI generation) get 10s — 5s for the cinematic reveal
+      // sequence + 5s of static display underneath. After the reveal
+      // unmounts, the customer + everyone in the shop gets to actually
+      // see the final image without the overlay.
+      const isFreshSelfie = ad.kind === "selfie" && revealingSelfieId === ad.id;
+      const duration = ad.kind === "selfie"
+        ? (isFreshSelfie ? 10000 : 5000)
+        : IMAGE_DURATION;
       imageTimerRef.current = setTimeout(next, duration);
     }
     return clearImageTimer;
-  }, [tick, current, loaded, ads, next, activeWidget]);
+  }, [tick, current, loaded, ads, next, activeWidget, revealingSelfieId]);
 
   useEffect(() => {
     if (!loaded || ads.length === 0 || activeWidget) return;
@@ -674,7 +682,7 @@ export default function PlayerPage() {
         const nowIso = new Date().toISOString();
         const { data: selfies } = await supabase
           .from("ads")
-          .select("id, type, final_media_path, customer_name, metadata")
+          .select("id, type, final_media_path, customer_name, customer_title, metadata")
           .eq("status", "published")
           .eq("kind" as any, "selfie")
           .eq("screen_id" as any, screenId)
@@ -723,6 +731,7 @@ export default function PlayerPage() {
         metadata: row.metadata ?? null,
         kind: "selfie",
         customer_name: row.customer_name ?? null,
+        customer_title: row.customer_title ?? null,
       }));
 
       // Shuffle the selfie pool so each refetch gives a different
@@ -795,13 +804,67 @@ export default function PlayerPage() {
 
   useEffect(() => { fetchAds(); }, [fetchAds]);
 
+  // Track selfie IDs that JUST became visible (status flipped from
+  // 'draft' to 'published' via the background AI task). When the
+  // rotation lands on one of these, the player plays a 5s cinematic
+  // reveal sequence BEFORE the normal display — gives the
+  // "appearance" moment the drama it deserves. After the reveal
+  // plays once, the ID is removed from this set so subsequent
+  // rotations of the same selfie are normal (no repeated reveal
+  // for the same customer).
+  const [freshSelfieIds, setFreshSelfieIds] = useState<Set<string>>(new Set());
+  const [revealingSelfieId, setRevealingSelfieId] = useState<string | null>(null);
+
   useEffect(() => {
     const channel = supabase
       .channel("player-ads")
-      .on("postgres_changes", { event: "*", schema: "public", table: "ads" }, () => fetchAds())
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "ads" },
+        (payload) => {
+          // Detect a selfie's status flipping from draft → published.
+          // The transform-selfie background task does exactly one
+          // UPDATE per selfie, setting status='published' and the
+          // final_media_path. Mark it as "fresh" so the cinematic
+          // reveal triggers on its first appearance.
+          const newRow: any = (payload as any).new;
+          const oldRow: any = (payload as any).old;
+          if (
+            payload.eventType === "UPDATE" &&
+            newRow?.kind === "selfie" &&
+            newRow?.status === "published" &&
+            oldRow?.status !== "published"
+          ) {
+            setFreshSelfieIds((prev) => {
+              const next = new Set(prev);
+              next.add(newRow.id);
+              return next;
+            });
+          }
+          fetchAds();
+        },
+      )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [fetchAds]);
+
+  // When the rotation lands on a fresh selfie, kick off the
+  // cinematic reveal (renders fullscreen over the normal ad display).
+  // Once started, immediately remove from the fresh set so the
+  // reveal can't re-fire if React re-runs this effect for any reason.
+  useEffect(() => {
+    if (activeWidget) return;
+    const currentAd = ads[current];
+    if (!currentAd) return;
+    if (currentAd.kind !== "selfie") return;
+    if (!freshSelfieIds.has(currentAd.id)) return;
+    setRevealingSelfieId(currentAd.id);
+    setFreshSelfieIds((prev) => {
+      const next = new Set(prev);
+      next.delete(currentAd.id);
+      return next;
+    });
+  }, [current, ads, activeWidget, freshSelfieIds]);
 
   useEffect(() => {
     if (current >= ads.length && ads.length > 0) setCurrent(0);
@@ -871,6 +934,29 @@ export default function PlayerPage() {
         {activeWidget === "news"       && <NewsWidget />}
         {activeWidget === "selfie-cta" && screenId && <SelfieWidget screenId={screenId} />}
       </div>
+
+      {/* Cinematic Reveal — sits ON TOP of everything for 5s when a
+          fresh selfie hits the rotation. Customer name + dramatic
+          title + scan/score animation + final image scale-in. After
+          5s the onComplete callback fires, we unmount, and the normal
+          selfie display + name overlay below take over for 5 more
+          seconds (timer extended to 10s for fresh selfies). */}
+      {(() => {
+        if (!revealingSelfieId) return null;
+        const ad = ads[current];
+        if (!ad || ad.id !== revealingSelfieId) return null;
+        return (
+          <div className="absolute inset-0 z-20">
+            <CinematicReveal
+              imageUrl={ad.final_media_path}
+              name={ad.customer_name ?? null}
+              title={ad.customer_title ?? null}
+              businessName={(ad.metadata as any)?.business_name ?? ""}
+              onComplete={() => setRevealingSelfieId(null)}
+            />
+          </div>
+        );
+      })()}
 
       {/* Selfie name overlay — only shows when the active ad is a
           customer selfie. Stays out of the way (top-right corner) so
