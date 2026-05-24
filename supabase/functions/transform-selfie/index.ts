@@ -48,6 +48,31 @@ const STYLE_PROMPTS: Record<string, string> = {
 
 const ALLOWED_STYLES = Object.keys(STYLE_PROMPTS);
 
+// Dramatic title pool by style. One is picked randomly at selfie
+// creation time and stored on the row (ads.customer_title). Used by:
+//   - The branded result card the customer downloads/shares
+//   - The cinematic reveal animation on the TV
+//   - The pre-filled social share text
+// Pool mixes EN/ES intentionally — both languages read as "cool
+// collectible / gaming" naturally. Order doesn't matter (random pick).
+const STYLE_TITLES: Record<string, string[]> = {
+  peluche:         ["TEDDY LEGEND", "PLUSH KING", "COZY ICON", "OSITO LEGENDARIO", "SOFT MODE"],
+  "action-figure": ["COLLECTOR'S EDITION", "LIMITED DROP", "RARE FIGURE", "ULTRA RARE", "EDICIÓN ESPECIAL"],
+  anime:           ["MAIN CHARACTER", "PROTAGONIST", "PROTAGONISTA", "ANIME HERO", "STUDIO STAR"],
+  caricatura:      ["ICON STATUS", "LIVING MEME", "PERSONAJE ÚNICO", "ONE OF ONE", "TOON LORD"],
+  estatua:         ["MARBLE LEGEND", "INMORTAL", "STONE KING", "ÉPICO ETERNO", "DIVINE MODE"],
+  poster:          ["BOX OFFICE HIT", "MAIN FEATURE", "ESTRELLA DEL CINE", "CINEMATIC LEGEND", "HEADLINER"],
+  "pixel-art":     ["8-BIT HERO", "RETRO LEGEND", "ARCADE KING", "FINAL BOSS", "PIXEL CHAMPION"],
+  superheroe:      ["EL ELEGIDO", "THE CHOSEN ONE", "HERO MODE", "POWER LEVEL: MAX", "LEGENDARY"],
+  "trading-card":  ["ULTRA RARE", "HOLOGRAPHIC", "1 OF 1", "MYTHIC TIER", "COLLECTOR'S PIECE"],
+  wanted:          ["MOST WANTED", "OUTLAW LEGEND", "BUSCADO", "DEAD OR ALIVE", "RENEGADE"],
+};
+
+const pickTitle = (style: string): string => {
+  const pool = STYLE_TITLES[style] ?? ["LEGEND"];
+  return pool[Math.floor(Math.random() * pool.length)];
+};
+
 // Rate-limit thresholds. Tuned conservatively: 3 selfies per device
 // per day is enough for legitimate "I'll try a different style"
 // behavior, but blocks the screenshot-farming attack the user flagged.
@@ -267,6 +292,7 @@ Deno.serve(async (req) => {
         advertiser_id: screenId,
         final_media_path: "",            // filled in by the background task
         customer_name: cleanName,
+        customer_title: pickTitle(style),  // dramatic title shown on TV reveal + branded card
         style,
         expires_at: expiresAt,
         metadata: { fp, ip, business_name: partner.business_name },
