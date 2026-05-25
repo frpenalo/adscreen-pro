@@ -70,14 +70,17 @@ const IMAGE_DURATION = 10000;
 const DEFAULT_WIDGET_FREQUENCY = 3;
 
 // ── "Awakening" teaser ────────────────────────────────────────────────────────
-// Cinematic 18s teaser (A+B+C+D, ver remotion/scripts/build-awakening-teaser.mjs).
-// Vive en el bucket `ad-media` bajo `system/` para diferenciarlo de los ads
-// subidos por advertisers. Mismo MP4 para todas las pantallas — no es
-// per-partner. La construcción de URL no usa cache-buster porque el archivo
-// es estable; si renderizamos una v2 cambiamos el nombre a awakening-teaser-v2.mp4
-// para forzar el refetch sin tocar HTTP cache.
-const AWAKENING_TEASER_URL =
-  "https://qrlzbveaoibyidpwlwmz.supabase.co/storage/v1/object/public/ad-media/system/awakening-teaser-v1.mp4";
+// Cinematic ~21s teaser (A+B+C+D, ver remotion/scripts/build-awakening-teaser.mjs).
+// Es PER-PARTNER porque el Segmento D contiene un QR REAL apuntando a la URL
+// del selfie del partner (/selfie/:screenId). Cada partner se renderiza por
+// separado vía el script y se sube a:
+//   ad-media/partner-teasers/{screenId}.mp4
+// Si el archivo no existe (partner sin teaser generado), el video falla en
+// onError y next() avanza — safe-fail, no rompe la rotación.
+const TEASER_STORAGE_BASE =
+  "https://qrlzbveaoibyidpwlwmz.supabase.co/storage/v1/object/public/ad-media/partner-teasers";
+const teaserUrlFor = (screenId: string | undefined) =>
+  screenId ? `${TEASER_STORAGE_BASE}/${screenId}.mp4` : null;
 // Cada N slots de la rotación, inyectamos un teaser. Con ~12 slots entre
 // teasers y ~10s por slot = un teaser cada ~2 minutos. Suficiente para
 // generar hype sin canibalizar airtime pagado. Ajustable sin re-deploy via
@@ -86,8 +89,8 @@ const TEASER_EVERY_N_SLOTS = 12;
 // Duración aproximada del teaser en segundos. Usada como fallback cuando el
 // videoElement no logra cargar metadata a tiempo (Fully Kiosk a veces tarda).
 // El timer real arma con v.duration + 2s si llega; este valor solo entra si
-// metadata nunca llega. 20s > 18s del teaser real.
-const TEASER_FALLBACK_DURATION_S = 20;
+// metadata nunca llega. 24s > 21s del teaser real (con margen de seguridad).
+const TEASER_FALLBACK_DURATION_S = 24;
 
 // Cache key is per-screen to prevent bleed-over between partner TVs
 // (e.g. QRs from a previously-viewed partner showing on a new panel).
@@ -841,23 +844,30 @@ export default function PlayerPage() {
       // Si la rotación tiene <N slots, igual metemos UN teaser al
       // final para que al menos aparezca una vez por ciclo en
       // rotaciones cortas (partner nuevo con pocos ads).
-      const teaserAd: Ad = {
-        id: "system-awakening-teaser",
-        type: "video",
-        final_media_path: AWAKENING_TEASER_URL,
-        qr_url: null,
-        metadata: null,
-        kind: "teaser",
-      };
+      // El URL es PER-PARTNER (QR real apuntando a /selfie/{screenId}).
+      // Si no hay screenId (preview/dev), saltamos el teaser entirely.
+      const teaserUrl = teaserUrlFor(screenId);
       const withTeasers: Ad[] = [];
-      for (let i = 0; i < interleaved.length; i++) {
-        withTeasers.push(interleaved[i]);
-        if ((i + 1) % TEASER_EVERY_N_SLOTS === 0) {
+      if (teaserUrl) {
+        const teaserAd: Ad = {
+          id: `system-awakening-teaser-${screenId}`,
+          type: "video",
+          final_media_path: teaserUrl,
+          qr_url: null,
+          metadata: null,
+          kind: "teaser",
+        };
+        for (let i = 0; i < interleaved.length; i++) {
+          withTeasers.push(interleaved[i]);
+          if ((i + 1) % TEASER_EVERY_N_SLOTS === 0) {
+            withTeasers.push(teaserAd);
+          }
+        }
+        if (withTeasers.length === interleaved.length && interleaved.length > 0) {
           withTeasers.push(teaserAd);
         }
-      }
-      if (withTeasers.length === interleaved.length && interleaved.length > 0) {
-        withTeasers.push(teaserAd);
+      } else {
+        withTeasers.push(...interleaved);
       }
 
       setAds(withTeasers);

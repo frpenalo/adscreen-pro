@@ -83,16 +83,22 @@ export const RemotionRoot: React.FC = () => {
       />
 
       {/* ── Awakening Outro (Segment D del teaser cinemático) ── */}
-      {/* 1920x1080, 24fps, 3s. fps matchea Kling output (24fps) para */}
-      {/* evitar re-interpolación al stitching. Ver scripts/render-awakening-outro.mjs */}
+      {/* 1920x1080, 24fps, 6s. fps matchea Kling output (24fps) para  */}
+      {/* evitar re-interpolación al stitching. Duración larga (6s) para */}
+      {/* que el QR esté visible y estable ~4s — suficiente para escanear */}
+      {/* desde un teléfono. defaultProps usa un QR demo para preview en  */}
+      {/* Studio; producción siempre pasa el qrUrl real per-partner.      */}
       <Composition
         id="AwakeningOutro"
         component={AwakeningOutro}
-        durationInFrames={72}
+        durationInFrames={144}
         fps={24}
         width={1920}
         height={1080}
-        defaultProps={{}}
+        defaultProps={{
+          qrUrl:
+            "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://adscreenpro.com",
+        }}
       />
     </>
   );
