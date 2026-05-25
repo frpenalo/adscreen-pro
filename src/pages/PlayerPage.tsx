@@ -357,6 +357,21 @@ export default function PlayerPage() {
   // released the lock when the tab was backgrounded.
   useWakeLock();
 
+  // Pintar el body de oscuro mientras el PlayerPage está montado. El
+  // body por defecto tiene bg blanco (--background: 0 0% 100% en
+  // index.css :root). Aunque el PlayerPage root tiene su propio bg
+  // dark, durante re-paints del browser (transiciones de opacity entre
+  // ads/widgets, montaje/desmontaje de elementos) el body BLANCO se
+  // alcanza a ver 1-2 frames → ese era el "flash blanco" que aparecía
+  // entre rotaciones. Restoreamos el bg original al unmount.
+  useEffect(() => {
+    const prev = document.body.style.backgroundColor;
+    document.body.style.backgroundColor = "#0a0a0a";
+    return () => {
+      document.body.style.backgroundColor = prev;
+    };
+  }, []);
+
   const [ads, setAds] = useState<Ad[]>(() => loadCache(screenId));
   const [current, setCurrent] = useState(0);
   const [prev, setPrev] = useState<number | null>(null); // crossfade: keeps old content visible
