@@ -176,8 +176,17 @@ async function main() {
       "-i", KLING_FILES[1],
       "-i", KLING_FILES[2],
       "-i", outroRawPath,
+      // Track de audio AAC silente — Fully Kiosk Browser y Android WebView a
+      // veces fallan al inicializar el pipeline de decodificación H.264 cuando
+      // el MP4 no tiene stream de audio (resultado: pantalla negra silenciosa
+      // durante toda la duración del video, sin error event). anullsrc genera
+      // un stream silente; -shortest abajo lo recorta a la duración del video.
+      // Patrón idéntico al de render.mjs (SalesAd) que usa AAC desde Remotion.
+      "-f", "lavfi",
+      "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
       "-filter_complex", "[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[v]",
       "-map", "[v]",
+      "-map", "4:a",        // audio del input #4 (anullsrc)
       "-c:v", "libx264",
       "-profile:v", "baseline",
       "-level", "4.0",
@@ -188,11 +197,14 @@ async function main() {
       "-sc_threshold", "0",
       "-preset", "slow",
       "-crf", "21",
+      "-c:a", "aac",
+      "-b:a", "128k",
+      "-shortest",          // termina cuando se acaba el video, no espera al audio infinito
       "-movflags", "+faststart",
       "-r", "24",
       finalPath,
     ],
-    "concat + re-encode Android-safe"
+    "concat + re-encode Android-safe + silent audio"
   );
 
   // ── 6. Subir MP4 final a Storage ───────────────────────────────────────────
