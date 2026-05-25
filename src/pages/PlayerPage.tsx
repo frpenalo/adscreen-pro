@@ -20,6 +20,7 @@ import SportsWidget from "@/components/player/SportsWidget";
 import NewsWidget from "@/components/player/NewsWidget";
 import SelfieWidget from "@/components/player/SelfieWidget";
 import CinematicReveal from "@/components/selfie/CinematicReveal";
+import { useWakeLock } from "@/hooks/useWakeLock";
 
 interface Ad {
   id: string;
@@ -286,6 +287,14 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
 
 export default function PlayerPage() {
   const { screenId } = useParams<{ screenId?: string }>();
+  // Keep the TV awake. Without this, Android/ChromeOS panels (and even
+  // some kiosk browsers) will dim or sleep after a few minutes of no
+  // touch input, killing the loop. Wake Lock API is a no-op on
+  // browsers that don't support it (older WebView), so safe to call
+  // unconditionally. Re-acquires on visibilitychange in case the OS
+  // released the lock when the tab was backgrounded.
+  useWakeLock();
+
   const [ads, setAds] = useState<Ad[]>(() => loadCache(screenId));
   const [current, setCurrent] = useState(0);
   const [prev, setPrev] = useState<number | null>(null); // crossfade: keeps old content visible
