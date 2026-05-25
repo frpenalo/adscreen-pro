@@ -280,6 +280,7 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
           // play() is called. duration is still known so the safety
           // timer and freeze detector work the same way.
           preload="metadata"
+          autoPlay
           muted
           playsInline
           onEnded={onVideoEnded}
@@ -595,12 +596,38 @@ export default function PlayerPage() {
     if (ad?.type === "video" && videoRef.current) {
       const v = videoRef.current;
       v.currentTime = 0;
+      // Forzar muted=true imperativamente ANTES de play(). El atributo
+      // muted del JSX debería ser suficiente, pero algunos browsers (TV
+      // Bro / Fully Kiosk / Android WebView específicos) evalúan el
+      // autoplay policy en un timing donde el attribute todavía no se
+      // aplicó al objeto DOM. Setearlo via JS antes del play() cierra
+      // esa ventana de race-condition. Síntoma cuando falta: video
+      // cargado pero browser muestra overlay ▶ "tap to play".
+      v.muted = true;
       // Don't cascade to next() if play() rejects — that triggered a rapid
       // bounce back to the previous ad whenever a freshly-mounted <video>
       // hadn't finished buffering yet, making the first ad appear to play
       // 2-3 times before rotating. Real load failures still advance via
       // onError; transient buffering issues recover via the safety timer.
       v.play().catch((err) => console.warn("video play() rejected (will retry via safety timer):", err));
+
+      // Re-attempt play cuando la pestaña vuelva a primer plano. En
+      // TV Bro / Chrome WebView, cuando el tab se backgrouna Chrome
+      // pausa el video y la promise de play() rechaza con AbortError.
+      // Al volver, debemos llamar play() de nuevo (no es automático).
+      // Listener local al ciclo de este ad: se limpia con el cleanup.
+      const onVisibility = () => {
+        if (!document.hidden && v.paused) {
+          v.muted = true;
+          v.play().catch(() => { /* ignore — safety timer cubre */ });
+        }
+      };
+      document.addEventListener("visibilitychange", onVisibility);
+      // El cleanup del useEffect anterior ya no aplica a este listener;
+      // lo limpiamos junto con los timers más abajo dentro del return.
+      ;(v as any).__visibilityCleanup = () => {
+        document.removeEventListener("visibilitychange", onVisibility);
+      };
 
       // Safety-net: force-advance if onEnded never fires (Fully Kiosk /
       // Android WebView / Smart TV browser quirk). Use the video's own
@@ -619,7 +646,15 @@ export default function PlayerPage() {
         v.addEventListener("loadedmetadata", armTimer, { once: true });
       }
     }
-    return clearVideoTimer;
+    return () => {
+      clearVideoTimer();
+      // Limpiar el listener de visibilitychange si se montó arriba.
+      const v = videoRef.current as any;
+      if (v?.__visibilityCleanup) {
+        v.__visibilityCleanup();
+        v.__visibilityCleanup = undefined;
+      }
+    };
     // `tick` is required so this effect re-fires when next() advances
     // from the only ad back to itself (current stays the same when
     // ads.length === 1). Without it, the video plays once and freezes.
