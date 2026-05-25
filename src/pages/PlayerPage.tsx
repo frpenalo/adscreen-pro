@@ -929,25 +929,35 @@ export default function PlayerPage() {
       // rotaciones cortas (partner nuevo con pocos ads).
       // El URL es PER-PARTNER (QR real apuntando a /selfie/{screenId}).
       // Si no hay screenId (preview/dev), saltamos el teaser entirely.
+      //
+      // IMPORTANTE: cada injection del teaser debe tener un `id` ÚNICO.
+      // React usa key={ad.id} en el map del render, y duplicar el id
+      // causa que React reuse el mismo <video> element entre slots →
+      // primera vez juega, segunda vez sale blanco (video element
+      // quedó pausado al final del primer ciclo, no re-arranca en el
+      // segundo). Por eso el síntoma "sale bien en uno, mal en otro".
       const teaserUrl = teaserUrlFor(screenId);
       const withTeasers: Ad[] = [];
       if (teaserUrl) {
-        const teaserAd: Ad = {
-          id: `system-awakening-teaser-${screenId}`,
+        // Factory en lugar de objeto compartido — cada llamada produce
+        // un nuevo objeto con id único basado en su posición.
+        const makeTeaser = (slotIndex: number): Ad => ({
+          id: `system-awakening-teaser-${screenId}-${slotIndex}`,
           type: "video",
           final_media_path: teaserUrl,
           qr_url: null,
           metadata: null,
           kind: "teaser",
-        };
+        });
+        let teaserSlot = 0;
         for (let i = 0; i < interleaved.length; i++) {
           withTeasers.push(interleaved[i]);
           if ((i + 1) % TEASER_EVERY_N_SLOTS === 0) {
-            withTeasers.push(teaserAd);
+            withTeasers.push(makeTeaser(teaserSlot++));
           }
         }
         if (withTeasers.length === interleaved.length && interleaved.length > 0) {
-          withTeasers.push(teaserAd);
+          withTeasers.push(makeTeaser(teaserSlot++));
         }
       } else {
         withTeasers.push(...interleaved);
