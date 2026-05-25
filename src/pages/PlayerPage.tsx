@@ -294,6 +294,15 @@ export default function PlayerPage() {
   const [activeWidget, setActiveWidget] = useState<WidgetType | null>(null);
   const [widgetFrequency, setWidgetFrequency] = useState(DEFAULT_WIDGET_FREQUENCY);
   const [tick, setTick] = useState(0);
+  // Selfie cinematic reveal state — declared HERE (top of component) so
+  // effects below that reference `revealingSelfieId` (notably the image
+  // timer that extends duration for fresh selfies) don't hit a
+  // temporal dead zone. Previous placement was after the realtime
+  // subscription effect ~500 lines below, which caused a runtime
+  // ReferenceError after minification ("Cannot access 'V' before
+  // initialization") and rendered the entire player blank.
+  const [freshSelfieIds, setFreshSelfieIds] = useState<Set<string>>(new Set());
+  const [revealingSelfieId, setRevealingSelfieId] = useState<string | null>(null);
   const imageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const widgetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -811,9 +820,9 @@ export default function PlayerPage() {
   // "appearance" moment the drama it deserves. After the reveal
   // plays once, the ID is removed from this set so subsequent
   // rotations of the same selfie are normal (no repeated reveal
-  // for the same customer).
-  const [freshSelfieIds, setFreshSelfieIds] = useState<Set<string>>(new Set());
-  const [revealingSelfieId, setRevealingSelfieId] = useState<string | null>(null);
+  // for the same customer). State is declared at the top of the
+  // component now — keep it that way so the image timer effect above
+  // can read revealingSelfieId without a temporal-dead-zone error.
 
   useEffect(() => {
     const channel = supabase
