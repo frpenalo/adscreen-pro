@@ -205,6 +205,24 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
   const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
   const [box, setBox] = useState<{ width: number; height: number; left: number; top: number } | null>(null);
 
+  // Detección de videos que necesitan autoplay "agresivo" (preload="auto"
+  // + autoPlay attribute) para que Fully Kiosk los reproduzca sin que el
+  // browser bloquee el play() inicial:
+  //
+  //   - kind === "teaser": el Awakening teaser (confirmado por bisección,
+  //     ver commit 267a147 y test-teaser.html).
+  //   - URL bajo partner-sales-ads/: el SalesAd generado por render.mjs.
+  //     Mismas características de encoding que el teaser (H.264 Baseline +
+  //     AAC silente + Lavf58) que parecen disparar la heurística de
+  //     autoplay-block de Fully Kiosk. Confirmed empíricamente.
+  //
+  // El resto (Shopify products, advertiser ads, selfies) NO entra aquí —
+  // funcionan bien con preload="metadata" y sin autoPlay attribute, y
+  // mantenerlos así evita decoder pressure en TVs viejos (commit cf8cd39).
+  const needsAggressiveAutoplay =
+    ad.kind === "teaser" ||
+    ad.final_media_path.includes("/partner-sales-ads/");
+
   const compute = useCallback(() => {
     const wrap = wrapperRef.current;
     const media = mediaRef.current;
@@ -285,22 +303,15 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
           // dimensions, codec) — frames are decoded lazily when
           // play() is called. duration is still known so the safety
           // timer and freeze detector work the same way.
-          // preload + autoPlay condicionales por ad.kind:
-          //
-          //   teaser: preload="auto" + autoPlay attribute. El test
-          //     diagnóstico (test-teaser.html) confirmó que esta combo
-          //     es lo que permite autoplay en Fully Kiosk para este MP4.
-          //
-          //   resto (ads, selfies): preload="metadata" SIN autoPlay
-          //     attribute. Funciona via imperative v.play() del useEffect
-          //     de abajo. Razón: aplicar autoPlay attribute a TODOS los
-          //     videos rompió el Shopify product video (blanco con QR
-          //     encima) — la combinación autoPlay + metadata dispara
-          //     un autoplay policy más estricto en Fully Kiosk WebView.
-          //     Preservar el preload="metadata" sigue evitando decoder
-          //     pressure en TVs viejos (commit cf8cd39).
-          preload={ad.kind === "teaser" ? "auto" : "metadata"}
-          autoPlay={ad.kind === "teaser"}
+          // preload + autoPlay condicionales — ver needsAggressiveAutoplay
+          // declarado al inicio del AdFrame para el detalle de qué videos
+          // entran. En corto: teaser + SalesAd (que comparten encoding
+          // characteristics que disparan autoplay-block en Fully Kiosk
+          // si no se les fuerza preload="auto" + autoPlay attribute).
+          // El resto sigue con preload="metadata" para no sobrecargar
+          // decoder en TVs viejos (commit cf8cd39).
+          preload={needsAggressiveAutoplay ? "auto" : "metadata"}
+          autoPlay={needsAggressiveAutoplay}
           muted
           playsInline
           onEnded={onVideoEnded}
