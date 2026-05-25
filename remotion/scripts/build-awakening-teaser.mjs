@@ -113,37 +113,43 @@ async function main() {
   console.log(`\n🎬 Awakening Teaser para screen ${screenId}`);
   console.log(`   Selfie URL: ${selfieUrl}\n`);
 
-  // ── 1. Generar QR PNG local ────────────────────────────────────────────────
-  console.log("📱 Generando QR PNG...");
+  // ── 1. Generar QR PNG local + convertir a data URL ────────────────────────
+  // GPT-suggested fix (hipótesis 70% del bug "pantalla negra en TV"):
+  // antes pasábamos qrUrl=<URL pública de Supabase> a Remotion. Durante
+  // el render, Remotion's <Img src={qrUrl}> hace fetch HTTP a esa URL.
+  // Si hay timeout, frame parcial, o cualquier irregularidad → frame
+  // corrupto que Chrome desktop tolera pero Android WebView/Fully Kiosk
+  // rechaza completo → black screen.
+  // Fix: leer el PNG localmente, convertir a base64 data URL, embeber
+  // en el inputProp. Remotion no hace network fetch, el QR está garan-
+  // tizado integro en cada frame. Mismo approach que `staticFile()` pero
+  // sin gestión de archivos en /public/.
+  console.log("📱 Generando QR PNG + convirtiendo a data URL...");
   const qrLocalPath = path.join(TMP, `awakening-qr-${screenId}.png`);
   await QRCode.toFile(qrLocalPath, selfieUrl, {
-    width: 800,                  // alto para que el escalado a 320px en el video se vea nítido
+    width: 800,
     margin: 1,
     color: { dark: "#000000", light: "#ffffff" },
-    errorCorrectionLevel: "M",   // M = 15% recovery, suficiente para escaneos a 2-3m
+    errorCorrectionLevel: "M",
   });
+  const qrBytes = fs.readFileSync(qrLocalPath);
+  const qrDataUrl = `data:image/png;base64,${qrBytes.toString("base64")}`;
+  console.log(`✅ QR data URL (${(qrBytes.length / 1024).toFixed(1)} KB → embebido)`);
 
-  // ── 2. Subir QR a Supabase Storage ─────────────────────────────────────────
-  console.log("☁️  Subiendo QR a Storage...");
-  const qrStoragePath = `awakening-qr/${screenId}.png`;
-  const qrPublicUrl = await uploadToStorage(
-    "ad-media",
-    qrStoragePath,
-    fs.readFileSync(qrLocalPath),
-    "image/png"
-  );
-  console.log(`✅ QR URL: ${qrPublicUrl}`);
+  // (SACADO el upload del QR a Storage — ya no se referencia desde lado
+  // del player. Si quisiéramos exponer el QR como archivo, lo agregamos
+  // aparte; por ahora solo necesitamos pasarlo a Remotion.)
 
-  // ── 3. Bundle Remotion ─────────────────────────────────────────────────────
+  // ── 2. Bundle Remotion ─────────────────────────────────────────────────────
   console.log("\n📦 Bundling Remotion...");
   const bundleLocation = await bundle({
     entryPoint: path.join(ROOT, "src", "index.ts"),
     webpackOverride: (c) => c,
   });
 
-  // ── 4. Render AwakeningOutro con el QR real ────────────────────────────────
-  console.log("\n🎬 Renderizando AwakeningOutro con QR real...");
-  const inputProps = { qrUrl: qrPublicUrl };
+  // ── 3. Render AwakeningOutro con QR data URL ───────────────────────────────
+  console.log("\n🎬 Renderizando AwakeningOutro...");
+  const inputProps = { qrUrl: qrDataUrl };
   const composition = await selectComposition({
     serveUrl: bundleLocation,
     id: "AwakeningOutro",
@@ -169,20 +175,17 @@ async function main() {
   // encoders/bitrates. Mismos flags que reEncodeForAndroid() de render.mjs.
   const finalPath = path.join(OUT, `awakening-teaser-${screenId}.mp4`);
   console.log("\n🔗 Concatenando A+B+C+D con re-encode Android-safe...");
-  // Match render.mjs (SalesAd) AL 100% — incluye color tags BT.709 y
-  // silencio AAC real (no anullsrc). Cambios vs versión anterior:
-  //   - aevalsrc=0 en lugar de anullsrc: genera silencio explícito con
-  //     samples a 0. anullsrc genera packets "null" que algunos decoders
-  //     hardware no procesan, causando init failure del pipeline AV.
-  //     aevalsrc produce muestras PCM reales (silenciosas) que se
-  //     codifican a AAC normal.
-  //   - -color_primaries bt709 -color_trc bt709 -colorspace bt709:
-  //     match exacto del ffmpegOverride de render.mjs. Sin estos tags,
-  //     algunos decoders Android asumen BT.601 (SD) → mapeo de color
-  //     incorrecto que en escenas oscuras puede colapsar a negro total.
-  //   - -r 30: forzamos 30fps al output (matchea SalesAd). El concat
-  //     ya hace el reframing necesario porque libx264 re-codifica todo.
-  //     AwakeningOutro también renderiza a 30fps ahora (cambio en Root.tsx).
+  // Encoding match a render.mjs (SalesAd) — pero SIN audio porque el
+  // teaser es 100% silente por diseño (TVs en barberías están muted +
+  // ambient music alto). Hipótesis GPT: agregar audio AAC artificial
+  // fue contraproducente. Mejor MP4 video-only explícito (-an).
+  //
+  // Settings:
+  //   - profile baseline + level 4.0 + yuv420p + bf=0 + faststart
+  //   - color tags BT.709 (sino algunos Android WebView asumen BT.601
+  //     → mapeo incorrecto, escenas oscuras colapsan a negro)
+  //   - -r 30 fps (matchea SalesAd que funciona en TV)
+  //   - -an explícito = NO audio stream
   await runFfmpeg(
     [
       "-y",
@@ -190,11 +193,9 @@ async function main() {
       "-i", KLING_FILES[1],
       "-i", KLING_FILES[2],
       "-i", outroRawPath,
-      "-f", "lavfi",
-      "-i", "aevalsrc=0:channel_layout=stereo:sample_rate=48000",
       "-filter_complex", "[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[v]",
       "-map", "[v]",
-      "-map", "4:a",
+      "-an",
       "-c:v", "libx264",
       "-profile:v", "baseline",
       "-level", "4.0",
@@ -206,13 +207,10 @@ async function main() {
       "-color_trc", "bt709",
       "-colorspace", "bt709",
       "-r", "30",
-      "-c:a", "aac",
-      "-b:a", "128k",
-      "-shortest",
       "-movflags", "+faststart",
       finalPath,
     ],
-    "concat + re-encode Android-safe (matched a SalesAd al 100%)"
+    "concat + re-encode Android-safe (video-only, sin audio)"
   );
 
   // ── 6. Subir MP4 final a Storage ───────────────────────────────────────────
