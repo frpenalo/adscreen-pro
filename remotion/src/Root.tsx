@@ -83,16 +83,17 @@ export const RemotionRoot: React.FC = () => {
       />
 
       {/* ── Awakening Outro (Segment D del teaser cinemático) ── */}
-      {/* 1920x1080, 24fps, 6s. fps matchea Kling output (24fps) para  */}
-      {/* evitar re-interpolación al stitching. Duración larga (6s) para */}
-      {/* que el QR esté visible y estable ~4s — suficiente para escanear */}
-      {/* desde un teléfono. defaultProps usa un QR demo para preview en  */}
-      {/* Studio; producción siempre pasa el qrUrl real per-partner.      */}
+      {/* 1920x1080, 30fps, 6s = 180 frames. fps matchea exacto el de    */}
+      {/* SalesAd (que SÍ funciona en TV de Softmedia). Cambiado de 24fps */}
+      {/* porque el concat de 24fps (Kling) → 30fps confunde algunos     */}
+      {/* hardware decoders. El concat ffmpeg unifica todo a 30fps al    */}
+      {/* re-encodear. Animaciones del outro se ajustan automáticamente  */}
+      {/* porque usan spring/interpolate de Remotion (frame-rate aware). */}
       <Composition
         id="AwakeningOutro"
         component={AwakeningOutro}
-        durationInFrames={144}
-        fps={24}
+        durationInFrames={180}
+        fps={30}
         width={1920}
         height={1080}
         defaultProps={{

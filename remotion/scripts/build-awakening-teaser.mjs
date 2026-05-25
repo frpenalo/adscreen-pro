@@ -169,22 +169,20 @@ async function main() {
   // encoders/bitrates. Mismos flags que reEncodeForAndroid() de render.mjs.
   const finalPath = path.join(OUT, `awakening-teaser-${screenId}.mp4`);
   console.log("\n🔗 Concatenando A+B+C+D con re-encode Android-safe...");
-  // IMPORTANTE: matcheamos EXACTAMENTE las settings de reEncodeForAndroid()
-  // de render.mjs (SalesAd) que ya está probado en producción en TVs Onn
-  // stick / Fully Kiosk. Cambios respecto a versión anterior:
-  //   - SACADO: -g 24 -keyint_min 24 -sc_threshold 0 (forzaba keyframe cada
-  //     segundo — innecesario, x264 default es 250 frames y funciona mejor
-  //     en hardware decoders que se atragantan con muchos keyframes grandes)
-  //   - SACADO: -r 24 (input ya es 24fps, no hace falta forzar; algunos
-  //     decoders detectan -r como "transcoding suspicious" y rechazan)
-  //   - CAMBIADO: -preset slow → fast (matchea SalesAd)
-  //   - CAMBIADO: -crf 21 → 23 (matchea SalesAd; menor bitrate = menos
-  //     presión sobre el decoder, en escenas oscuras del teaser puede que
-  //     21 estuviera generando bitrate pico arriba de lo que el decoder
-  //     digiere)
-  //   - MANTENIDO: profile baseline + level 4.0 + yuv420p + bf=0 + faststart
-  //   - MANTENIDO: anullsrc → AAC para que MP4 tenga audio track (sino
-  //     Android WebView falla silencioso al init del pipeline)
+  // Match render.mjs (SalesAd) AL 100% — incluye color tags BT.709 y
+  // silencio AAC real (no anullsrc). Cambios vs versión anterior:
+  //   - aevalsrc=0 en lugar de anullsrc: genera silencio explícito con
+  //     samples a 0. anullsrc genera packets "null" que algunos decoders
+  //     hardware no procesan, causando init failure del pipeline AV.
+  //     aevalsrc produce muestras PCM reales (silenciosas) que se
+  //     codifican a AAC normal.
+  //   - -color_primaries bt709 -color_trc bt709 -colorspace bt709:
+  //     match exacto del ffmpegOverride de render.mjs. Sin estos tags,
+  //     algunos decoders Android asumen BT.601 (SD) → mapeo de color
+  //     incorrecto que en escenas oscuras puede colapsar a negro total.
+  //   - -r 30: forzamos 30fps al output (matchea SalesAd). El concat
+  //     ya hace el reframing necesario porque libx264 re-codifica todo.
+  //     AwakeningOutro también renderiza a 30fps ahora (cambio en Root.tsx).
   await runFfmpeg(
     [
       "-y",
@@ -193,7 +191,7 @@ async function main() {
       "-i", KLING_FILES[2],
       "-i", outroRawPath,
       "-f", "lavfi",
-      "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+      "-i", "aevalsrc=0:channel_layout=stereo:sample_rate=48000",
       "-filter_complex", "[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[v]",
       "-map", "[v]",
       "-map", "4:a",
@@ -204,13 +202,17 @@ async function main() {
       "-bf", "0",
       "-preset", "fast",
       "-crf", "23",
+      "-color_primaries", "bt709",
+      "-color_trc", "bt709",
+      "-colorspace", "bt709",
+      "-r", "30",
       "-c:a", "aac",
       "-b:a", "128k",
       "-shortest",
       "-movflags", "+faststart",
       finalPath,
     ],
-    "concat + re-encode Android-safe (matched a render.mjs)"
+    "concat + re-encode Android-safe (matched a SalesAd al 100%)"
   );
 
   // ── 6. Subir MP4 final a Storage ───────────────────────────────────────────
