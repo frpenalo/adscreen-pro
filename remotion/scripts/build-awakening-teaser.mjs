@@ -169,6 +169,22 @@ async function main() {
   // encoders/bitrates. Mismos flags que reEncodeForAndroid() de render.mjs.
   const finalPath = path.join(OUT, `awakening-teaser-${screenId}.mp4`);
   console.log("\n🔗 Concatenando A+B+C+D con re-encode Android-safe...");
+  // IMPORTANTE: matcheamos EXACTAMENTE las settings de reEncodeForAndroid()
+  // de render.mjs (SalesAd) que ya está probado en producción en TVs Onn
+  // stick / Fully Kiosk. Cambios respecto a versión anterior:
+  //   - SACADO: -g 24 -keyint_min 24 -sc_threshold 0 (forzaba keyframe cada
+  //     segundo — innecesario, x264 default es 250 frames y funciona mejor
+  //     en hardware decoders que se atragantan con muchos keyframes grandes)
+  //   - SACADO: -r 24 (input ya es 24fps, no hace falta forzar; algunos
+  //     decoders detectan -r como "transcoding suspicious" y rechazan)
+  //   - CAMBIADO: -preset slow → fast (matchea SalesAd)
+  //   - CAMBIADO: -crf 21 → 23 (matchea SalesAd; menor bitrate = menos
+  //     presión sobre el decoder, en escenas oscuras del teaser puede que
+  //     21 estuviera generando bitrate pico arriba de lo que el decoder
+  //     digiere)
+  //   - MANTENIDO: profile baseline + level 4.0 + yuv420p + bf=0 + faststart
+  //   - MANTENIDO: anullsrc → AAC para que MP4 tenga audio track (sino
+  //     Android WebView falla silencioso al init del pipeline)
   await runFfmpeg(
     [
       "-y",
@@ -176,35 +192,25 @@ async function main() {
       "-i", KLING_FILES[1],
       "-i", KLING_FILES[2],
       "-i", outroRawPath,
-      // Track de audio AAC silente — Fully Kiosk Browser y Android WebView a
-      // veces fallan al inicializar el pipeline de decodificación H.264 cuando
-      // el MP4 no tiene stream de audio (resultado: pantalla negra silenciosa
-      // durante toda la duración del video, sin error event). anullsrc genera
-      // un stream silente; -shortest abajo lo recorta a la duración del video.
-      // Patrón idéntico al de render.mjs (SalesAd) que usa AAC desde Remotion.
       "-f", "lavfi",
       "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
       "-filter_complex", "[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[v]",
       "-map", "[v]",
-      "-map", "4:a",        // audio del input #4 (anullsrc)
+      "-map", "4:a",
       "-c:v", "libx264",
       "-profile:v", "baseline",
       "-level", "4.0",
       "-pix_fmt", "yuv420p",
       "-bf", "0",
-      "-g", "24",
-      "-keyint_min", "24",
-      "-sc_threshold", "0",
-      "-preset", "slow",
-      "-crf", "21",
+      "-preset", "fast",
+      "-crf", "23",
       "-c:a", "aac",
       "-b:a", "128k",
-      "-shortest",          // termina cuando se acaba el video, no espera al audio infinito
+      "-shortest",
       "-movflags", "+faststart",
-      "-r", "24",
       finalPath,
     ],
-    "concat + re-encode Android-safe + silent audio"
+    "concat + re-encode Android-safe (matched a render.mjs)"
   );
 
   // ── 6. Subir MP4 final a Storage ───────────────────────────────────────────
