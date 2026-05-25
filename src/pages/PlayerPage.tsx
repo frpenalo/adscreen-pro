@@ -205,23 +205,9 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
   const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
   const [box, setBox] = useState<{ width: number; height: number; left: number; top: number } | null>(null);
 
-  // Detección de videos que necesitan autoplay "agresivo" (preload="auto"
-  // + autoPlay attribute) para que Fully Kiosk los reproduzca sin que el
-  // browser bloquee el play() inicial:
-  //
-  //   - kind === "teaser": el Awakening teaser (confirmado por bisección,
-  //     ver commit 267a147 y test-teaser.html).
-  //   - URL bajo partner-sales-ads/: el SalesAd generado por render.mjs.
-  //     Mismas características de encoding que el teaser (H.264 Baseline +
-  //     AAC silente + Lavf58) que parecen disparar la heurística de
-  //     autoplay-block de Fully Kiosk. Confirmed empíricamente.
-  //
-  // El resto (Shopify products, advertiser ads, selfies) NO entra aquí —
-  // funcionan bien con preload="metadata" y sin autoPlay attribute, y
-  // mantenerlos así evita decoder pressure en TVs viejos (commit cf8cd39).
-  const needsAggressiveAutoplay =
-    ad.kind === "teaser" ||
-    ad.final_media_path.includes("/partner-sales-ads/");
+  // (eliminada needsAggressiveAutoplay — la detección ahora es inline en
+  // los attributes del <video>, solo teaser usa preload="auto"+autoPlay.
+  // SalesAd se trata aparte fuera de este componente.)
 
   const compute = useCallback(() => {
     const wrap = wrapperRef.current;
@@ -303,22 +289,14 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
           // dimensions, codec) — frames are decoded lazily when
           // play() is called. duration is still known so the safety
           // timer and freeze detector work the same way.
-          // preload: teaser + SalesAd usan "auto" para pre-bufferar bytes
-          // (ambos tienen encoding Baseline + AAC silente que sin
-          // pre-buffer rechaza el v.play() imperativo). Resto sigue
-          // "metadata" para no sobrecargar decoder en TVs viejos
-          // (commit cf8cd39).
-          //
-          // autoPlay attribute: NADIE lo usa. Razón confirmada por
-          // whack-a-mole: el autoPlay attribute hace que el video
-          // empiece a reproducir AL MOMENTO DE MONTAR (no cuando se
-          // hace current). El player monta TODOS los ads en paralelo
-          // → múltiples videos con autoPlay → todos hogging decoders
-          // en background → cuando le toca a otro ad no hay decoder
-          // libre → pantalla blanca. Eliminar autoPlay attribute
-          // completamente deja que SOLO el current ad consuma decoder
-          // (via v.play() imperativo del useEffect).
-          preload={needsAggressiveAutoplay ? "auto" : "metadata"}
+          // SOLO teaser usa preload="auto" + autoPlay attribute. Es la
+          // única config que tenía Teaser ✓ + Shopify ✓ funcionando
+          // simultáneamente (commit 77fcb73). SalesAd queda con su
+          // problema original (a tratar después con otro approach:
+          // probablemente re-render con encoding tipo Shopify — High
+          // profile + AAC 93k — para que no necesite preload agresivo).
+          preload={ad.kind === "teaser" ? "auto" : "metadata"}
+          autoPlay={ad.kind === "teaser"}
           muted
           playsInline
           onEnded={onVideoEnded}
