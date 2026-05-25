@@ -77,10 +77,23 @@ const DEFAULT_WIDGET_FREQUENCY = 3;
 //   ad-media/partner-teasers/{screenId}.mp4
 // Si el archivo no existe (partner sin teaser generado), el video falla en
 // onError y next() avanza — safe-fail, no rompe la rotación.
+//
+// ⚠️  CACHE-BUSTER MANUAL (TEASER_VERSION) ⚠️
+// Como el storage path es FIJO ({screenId}.mp4) y se re-usa entre renders,
+// Android WebView / Fully Kiosk Browser sirven los bytes cacheados aunque
+// Storage tenga bytes nuevos — exacto mismo bug que arreglamos para SalesAd
+// en commit f8375d0. La diferencia: SalesAd tiene un row.id en DB que cambia
+// con cada DELETE+INSERT del workflow → cache-buster automático. El teaser
+// NO inserta en DB (player construye el URL solo), así que no hay row.id.
+// Solución: bumpear TEASER_VERSION acá CADA VEZ que se re-renderice el
+// teaser. La query string fuerza al WebView a tratar la URL como nueva.
 const TEASER_STORAGE_BASE =
   "https://qrlzbveaoibyidpwlwmz.supabase.co/storage/v1/object/public/ad-media/partner-teasers";
+const TEASER_VERSION = "20260525-3";
 const teaserUrlFor = (screenId: string | undefined) =>
-  screenId ? `${TEASER_STORAGE_BASE}/${screenId}.mp4` : null;
+  screenId
+    ? `${TEASER_STORAGE_BASE}/${screenId}.mp4?v=${TEASER_VERSION}`
+    : null;
 // Cada N slots de la rotación, inyectamos un teaser. Con ~12 slots entre
 // teasers y ~10s por slot = un teaser cada ~2 minutos. Suficiente para
 // generar hype sin canibalizar airtime pagado. Ajustable sin re-deploy via
