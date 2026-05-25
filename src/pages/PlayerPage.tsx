@@ -279,14 +279,22 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
           // dimensions, codec) — frames are decoded lazily when
           // play() is called. duration is still known so the safety
           // timer and freeze detector work the same way.
-          // preload condicional: teasers usan "auto" para pre-buffer
-          // agresivo. Confirmed por test diagnóstico (test-teaser.html):
-          // MISMO MP4 con preload="auto" autoplayea perfecto en Fully
-          // Kiosk; con preload="metadata" el play() rechaza (asume que
-          // los bytes no están listos). Resto de ads usa "metadata"
-          // para no sobrecargar decoder en TVs viejos (commit cf8cd39).
+          // preload + autoPlay condicionales por ad.kind:
+          //
+          //   teaser: preload="auto" + autoPlay attribute. El test
+          //     diagnóstico (test-teaser.html) confirmó que esta combo
+          //     es lo que permite autoplay en Fully Kiosk para este MP4.
+          //
+          //   resto (ads, selfies): preload="metadata" SIN autoPlay
+          //     attribute. Funciona via imperative v.play() del useEffect
+          //     de abajo. Razón: aplicar autoPlay attribute a TODOS los
+          //     videos rompió el Shopify product video (blanco con QR
+          //     encima) — la combinación autoPlay + metadata dispara
+          //     un autoplay policy más estricto en Fully Kiosk WebView.
+          //     Preservar el preload="metadata" sigue evitando decoder
+          //     pressure en TVs viejos (commit cf8cd39).
           preload={ad.kind === "teaser" ? "auto" : "metadata"}
-          autoPlay
+          autoPlay={ad.kind === "teaser"}
           muted
           playsInline
           onEnded={onVideoEnded}
