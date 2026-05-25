@@ -303,27 +303,22 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
           // dimensions, codec) — frames are decoded lazily when
           // play() is called. duration is still known so the safety
           // timer and freeze detector work the same way.
-          // preload + autoPlay separados (NO usan misma flag):
-          //
           // preload: teaser + SalesAd usan "auto" para pre-bufferar bytes
-          //   y que el v.play() imperativo del useEffect succeed al
-          //   instante (ambos tienen encoding Baseline + AAC silente
-          //   que sin pre-buffer rechaza play()).
+          // (ambos tienen encoding Baseline + AAC silente que sin
+          // pre-buffer rechaza el v.play() imperativo). Resto sigue
+          // "metadata" para no sobrecargar decoder en TVs viejos
+          // (commit cf8cd39).
           //
-          // autoPlay attribute: SOLO teaser. Razón: el autoPlay attribute
-          //   hace que el video empiece a reproducir AL MOMENTO DE MONTAR
-          //   el element (no cuando se hace current en la rotación). El
-          //   player monta TODOS los ads en paralelo, así que múltiples
-          //   videos con autoPlay → todos hogging decoder en background
-          //   → cuando le toca a otro ad (ej. Shopify), no hay decoder
-          //   libre → pantalla blanca. Limitar autoPlay a UN solo tipo
-          //   (teaser) deja decoder libre para los demás.
-          //
-          // SalesAd ahora: preload="auto" pero SIN autoPlay attribute.
-          //   El v.play() imperativo del useEffect (cuando es current)
-          //   succeed porque los bytes ya están bufferados.
+          // autoPlay attribute: NADIE lo usa. Razón confirmada por
+          // whack-a-mole: el autoPlay attribute hace que el video
+          // empiece a reproducir AL MOMENTO DE MONTAR (no cuando se
+          // hace current). El player monta TODOS los ads en paralelo
+          // → múltiples videos con autoPlay → todos hogging decoders
+          // en background → cuando le toca a otro ad no hay decoder
+          // libre → pantalla blanca. Eliminar autoPlay attribute
+          // completamente deja que SOLO el current ad consuma decoder
+          // (via v.play() imperativo del useEffect).
           preload={needsAggressiveAutoplay ? "auto" : "metadata"}
-          autoPlay={ad.kind === "teaser"}
           muted
           playsInline
           onEnded={onVideoEnded}
