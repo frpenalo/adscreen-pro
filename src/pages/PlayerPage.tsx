@@ -243,20 +243,19 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
   const padding = box ? Math.max(8, qrSize * 0.06) : 12;
 
   return (
-    <div ref={wrapperRef} className="relative w-full h-full">
+    // Fondo negro al wrapper. Sin esto, mientras la <img> carga (o si
+    // un <video> aún no decodifica frames), Fully Kiosk WebView muestra
+    // BLANCO en lugar del bg de la página. Aplicarlo al wrapper en
+    // lugar del <img> porque algunos WebViews ignoran backgroundColor
+    // en imgs (es replaced element). El wrapper es un div regular
+    // donde bg-color siempre se aplica.
+    <div ref={wrapperRef} className="relative w-full h-full" style={{ backgroundColor: "#0a0a0a" }}>
       {ad.type === "image" ? (
         <img
           ref={(el) => { mediaRef.current = el; }}
           src={ad.final_media_path}
           alt=""
           className="w-full h-full object-contain"
-          // Fondo negro mientras la imagen carga. Sin esto, Fully Kiosk
-          // WebView muestra blanco en el espacio del <img> durante el
-          // fetch (especialmente en primer ciclo cuando no hay cache
-          // HTTP). El blanco era especialmente visible antes de los
-          // selfies. Coordinado con el bg #0a0a0a del player para que
-          // el "antes de cargar" sea invisible.
-          style={{ backgroundColor: "#0a0a0a" }}
           draggable={false}
           onLoad={compute}
         />
