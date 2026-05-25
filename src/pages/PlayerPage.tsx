@@ -279,7 +279,13 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
           // dimensions, codec) — frames are decoded lazily when
           // play() is called. duration is still known so the safety
           // timer and freeze detector work the same way.
-          preload="metadata"
+          // preload condicional: teasers usan "auto" para pre-buffer
+          // agresivo. Confirmed por test diagnóstico (test-teaser.html):
+          // MISMO MP4 con preload="auto" autoplayea perfecto en Fully
+          // Kiosk; con preload="metadata" el play() rechaza (asume que
+          // los bytes no están listos). Resto de ads usa "metadata"
+          // para no sobrecargar decoder en TVs viejos (commit cf8cd39).
+          preload={ad.kind === "teaser" ? "auto" : "metadata"}
           autoPlay
           muted
           playsInline
