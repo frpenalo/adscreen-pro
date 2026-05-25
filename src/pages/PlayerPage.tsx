@@ -250,6 +250,13 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
           src={ad.final_media_path}
           alt=""
           className="w-full h-full object-contain"
+          // Fondo negro mientras la imagen carga. Sin esto, Fully Kiosk
+          // WebView muestra blanco en el espacio del <img> durante el
+          // fetch (especialmente en primer ciclo cuando no hay cache
+          // HTTP). El blanco era especialmente visible antes de los
+          // selfies. Coordinado con el bg #0a0a0a del player para que
+          // el "antes de cargar" sea invisible.
+          style={{ backgroundColor: "#0a0a0a" }}
           draggable={false}
           onLoad={compute}
         />
