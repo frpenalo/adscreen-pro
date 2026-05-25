@@ -175,17 +175,22 @@ async function main() {
   // encoders/bitrates. Mismos flags que reEncodeForAndroid() de render.mjs.
   const finalPath = path.join(OUT, `awakening-teaser-${screenId}.mp4`);
   console.log("\n🔗 Concatenando A+B+C+D con re-encode Android-safe...");
-  // Encoding match a render.mjs (SalesAd) — pero SIN audio porque el
-  // teaser es 100% silente por diseño (TVs en barberías están muted +
-  // ambient music alto). Hipótesis GPT: agregar audio AAC artificial
-  // fue contraproducente. Mejor MP4 video-only explícito (-an).
+  // Encoding match a render.mjs (SalesAd) AL 100%. CRÍTICO: audio AAC
+  // silente. Confirmed por comparación contra los dos MP4 que SÍ
+  // funcionan en el Onn stick (Shopify product + Softmedia SalesAd):
+  // ambos tienen audio AAC. Mi versión sin audio (-an) producía
+  // pantalla blanca/negra porque Fully Kiosk WebView necesita el
+  // audio stream para inicializar el pipeline AV correctamente.
   //
-  // Settings:
+  // Audio:
+  //   - aevalsrc=0 genera silencio explícito (samples PCM a 0)
+  //   - Encoded a AAC LC 128kbps (matchea SalesAd)
+  //   - -shortest corta el audio infinito a la duración del video
+  //
+  // Video:
   //   - profile baseline + level 4.0 + yuv420p + bf=0 + faststart
-  //   - color tags BT.709 (sino algunos Android WebView asumen BT.601
-  //     → mapeo incorrecto, escenas oscuras colapsan a negro)
+  //   - color tags BT.709 (sino algunos Android WebView asumen BT.601)
   //   - -r 30 fps (matchea SalesAd que funciona en TV)
-  //   - -an explícito = NO audio stream
   await runFfmpeg(
     [
       "-y",
@@ -193,9 +198,11 @@ async function main() {
       "-i", KLING_FILES[1],
       "-i", KLING_FILES[2],
       "-i", outroRawPath,
+      "-f", "lavfi",
+      "-i", "aevalsrc=0:channel_layout=stereo:sample_rate=48000",
       "-filter_complex", "[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[v]",
       "-map", "[v]",
-      "-an",
+      "-map", "4:a",
       "-c:v", "libx264",
       "-profile:v", "baseline",
       "-level", "4.0",
@@ -207,10 +214,13 @@ async function main() {
       "-color_trc", "bt709",
       "-colorspace", "bt709",
       "-r", "30",
+      "-c:a", "aac",
+      "-b:a", "128k",
+      "-shortest",
       "-movflags", "+faststart",
       finalPath,
     ],
-    "concat + re-encode Android-safe (video-only, sin audio)"
+    "concat + re-encode Android-safe (con audio AAC silente)"
   );
 
   // ── 6. Subir MP4 final a Storage ───────────────────────────────────────────

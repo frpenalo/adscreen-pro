@@ -89,7 +89,7 @@ const DEFAULT_WIDGET_FREQUENCY = 3;
 // teaser. La query string fuerza al WebView a tratar la URL como nueva.
 const TEASER_STORAGE_BASE =
   "https://qrlzbveaoibyidpwlwmz.supabase.co/storage/v1/object/public/ad-media/partner-teasers";
-const TEASER_VERSION = "20260525-5";
+const TEASER_VERSION = "20260525-6";
 const teaserUrlFor = (screenId: string | undefined) =>
   screenId
     ? `${TEASER_STORAGE_BASE}/${screenId}.mp4?v=${TEASER_VERSION}`
