@@ -3,6 +3,7 @@ import { Composition } from "remotion";
 import { SalesAd } from "./SalesAd";
 import { AdvertiserAd } from "./AdvertiserAd";
 import { SpecAd } from "./SpecAd";
+import { AwakeningOutro } from "./AwakeningOutro";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -78,6 +79,19 @@ export const RemotionRoot: React.FC = () => {
         fps={30}
         width={1080}
         height={1920}
+        defaultProps={{}}
+      />
+
+      {/* ── Awakening Outro (Segment D del teaser cinemático) ── */}
+      {/* 1920x1080, 24fps, 3s. fps matchea Kling output (24fps) para */}
+      {/* evitar re-interpolación al stitching. Ver scripts/render-awakening-outro.mjs */}
+      <Composition
+        id="AwakeningOutro"
+        component={AwakeningOutro}
+        durationInFrames={72}
+        fps={24}
+        width={1920}
+        height={1080}
         defaultProps={{}}
       />
     </>

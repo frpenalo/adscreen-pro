@@ -31,7 +31,12 @@ interface Ad {
   // Selfies are stored in the same `ads` table with kind='selfie'.
   // The player uses these to render the customer-name overlay and
   // to avoid logging selfies as paid impressions.
-  kind?: "ad" | "selfie";
+  //
+  // 'teaser' is a SYNTHETIC kind injected by the player (not from DB).
+  // It's the global "Awakening" cinematic teaser MP4 that primes the
+  // viewer for the selfie QR coming next in rotation. Not logged as
+  // a paid impression. Same URL across all partners.
+  kind?: "ad" | "selfie" | "teaser";
   customer_name?: string | null;
   customer_title?: string | null;
 }
@@ -63,6 +68,26 @@ const SELFIE_EVERY_N_ADS = 10;
 const WIDGET_DURATION = 10000;
 const IMAGE_DURATION = 10000;
 const DEFAULT_WIDGET_FREQUENCY = 3;
+
+// ── "Awakening" teaser ────────────────────────────────────────────────────────
+// Cinematic 18s teaser (A+B+C+D, ver remotion/scripts/build-awakening-teaser.mjs).
+// Vive en el bucket `ad-media` bajo `system/` para diferenciarlo de los ads
+// subidos por advertisers. Mismo MP4 para todas las pantallas — no es
+// per-partner. La construcción de URL no usa cache-buster porque el archivo
+// es estable; si renderizamos una v2 cambiamos el nombre a awakening-teaser-v2.mp4
+// para forzar el refetch sin tocar HTTP cache.
+const AWAKENING_TEASER_URL =
+  "https://qrlzbveaoibyidpwlwmz.supabase.co/storage/v1/object/public/ad-media/system/awakening-teaser-v1.mp4";
+// Cada N slots de la rotación, inyectamos un teaser. Con ~12 slots entre
+// teasers y ~10s por slot = un teaser cada ~2 minutos. Suficiente para
+// generar hype sin canibalizar airtime pagado. Ajustable sin re-deploy via
+// remote command si nos da feedback negativo.
+const TEASER_EVERY_N_SLOTS = 12;
+// Duración aproximada del teaser en segundos. Usada como fallback cuando el
+// videoElement no logra cargar metadata a tiempo (Fully Kiosk a veces tarda).
+// El timer real arma con v.duration + 2s si llega; este valor solo entra si
+// metadata nunca llega. 20s > 18s del teaser real.
+const TEASER_FALLBACK_DURATION_S = 20;
 
 // Cache key is per-screen to prevent bleed-over between partner TVs
 // (e.g. QRs from a previously-viewed partner showing on a new panel).
@@ -475,10 +500,12 @@ export default function PlayerPage() {
 
   const logImpression = useCallback((ad: Ad) => {
     if (!ad || !online) return;
-    // Skip selfies — they're filler content, not billable impressions.
-    // Counting them would inflate analytics and confuse advertiser
-    // reporting (a selfie display in the rotation isn't a paid ad view).
-    if (ad.kind === "selfie") return;
+    // Skip selfies AND teasers — they're filler content, not billable
+    // impressions. Counting them would inflate analytics and confuse
+    // advertiser reporting (a selfie or the awakening teaser isn't a
+    // paid ad view). The teaser ID is also synthetic ("system-awakening")
+    // so the FK to ads.id would fail anyway.
+    if (ad.kind === "selfie" || ad.kind === "teaser") return;
     supabase.from("ad_logs").insert({ ad_id: ad.id, location_id: screenId ?? "unknown" });
   }, [screenId, online]);
 
@@ -561,10 +588,12 @@ export default function PlayerPage() {
 
       // Safety-net: force-advance if onEnded never fires (Fully Kiosk /
       // Android WebView / Smart TV browser quirk). Use the video's own
-      // duration + 2s buffer when available; otherwise 15s fallback.
+      // duration + 2s buffer when available; otherwise 15s fallback for
+      // normal ads, 20s fallback for the awakening teaser (18s long).
       clearVideoTimer();
+      const fallbackDur = ad.kind === "teaser" ? TEASER_FALLBACK_DURATION_S : 13;
       const armTimer = () => {
-        const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : 13;
+        const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : fallbackDur;
         clearVideoTimer();
         videoTimerRef.current = setTimeout(next, (dur + 2) * 1000);
       };
@@ -805,8 +834,34 @@ export default function PlayerPage() {
         interleaved.push(selfiesToUse[selfieIdx++]);
       }
 
-      setAds(interleaved);
-      saveCache(screenId, interleaved);
+      // ── Inyectar teaser "Awakening" cada N slots ──────────────────
+      // Hace de "trailer" antes de los slots de selfie-cta. Se mete
+      // DESPUÉS del interleave de selfies para que cuente sobre la
+      // rotación final (ads + selfies), no solo los ads originales.
+      // Si la rotación tiene <N slots, igual metemos UN teaser al
+      // final para que al menos aparezca una vez por ciclo en
+      // rotaciones cortas (partner nuevo con pocos ads).
+      const teaserAd: Ad = {
+        id: "system-awakening-teaser",
+        type: "video",
+        final_media_path: AWAKENING_TEASER_URL,
+        qr_url: null,
+        metadata: null,
+        kind: "teaser",
+      };
+      const withTeasers: Ad[] = [];
+      for (let i = 0; i < interleaved.length; i++) {
+        withTeasers.push(interleaved[i]);
+        if ((i + 1) % TEASER_EVERY_N_SLOTS === 0) {
+          withTeasers.push(teaserAd);
+        }
+      }
+      if (withTeasers.length === interleaved.length && interleaved.length > 0) {
+        withTeasers.push(teaserAd);
+      }
+
+      setAds(withTeasers);
+      saveCache(screenId, withTeasers);
       setLoaded(true);
     } catch {
       setLoaded(true);
