@@ -235,19 +235,24 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
     return () => ro.disconnect();
   }, [compute, ad.id]);
 
-  // Cleanup minimalista al unmount: solo pause(). React maneja el resto
-  // del DOM removal de forma estándar. Antes intentaba pause + remove src
-  // + load(), pero el load() re-emite eventos que pueden interferir con
-  // el nuevo ad montando en paralelo — causaba stuttering. Confiar en
-  // que React + el browser limpian el video al detach es más estable.
+  // Cleanup agresivo al unmount (Phase 1 — recuperación del decoder
+  // hardware tras PIPELINE_ERROR confirmado por debug overlay logs).
+  // Mata el video element completo: pause + clear src + load. Esto
+  // fuerza al Onn stick / Fully Kiosk WebView a soltar el decoder
+  // slot DE INMEDIATO. Sin esto, después de un PIPELINE_ERROR, el
+  // decoder se queda en estado corrupto y los siguientes ads también
+  // fallan (cascade failure observado en producción).
   useEffect(() => {
     return () => {
       const m = mediaRef.current as HTMLVideoElement | null;
       if (m && "pause" in m) {
         try {
           m.pause();
+          m.removeAttribute("src");
+          m.src = "";
+          m.load();
         } catch {
-          /* ignore */
+          /* ignore — best-effort */
         }
       }
     };
@@ -410,6 +415,13 @@ export default function PlayerPage() {
   const [ads, setAds] = useState<Ad[]>(() => loadCache(screenId));
   const [current, setCurrent] = useState(0);
   // (eliminado prev/setPrev — ya no hay crossfade, solo el current se monta)
+  // Estado de transición entre ads: cuando true, el ad layer NO renderiza
+  // → se ve fondo dark. Dura 300ms entre cada ad. Le da tiempo al hardware
+  // decoder del Onn stick de soltar recursos antes de mountar el siguiente
+  // video. Crítico para evitar cascade failures de PIPELINE_ERROR observados
+  // en producción (Phase 1 del plan: proteger el player).
+  const [transitioning, setTransitioning] = useState(false);
+  const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [activeWidget, setActiveWidget] = useState<WidgetType | null>(null);
@@ -615,14 +627,47 @@ export default function PlayerPage() {
     const fromAd = ads[current];
     const toAd = ads[nextIdx];
     logDebug(
-      `next ${current}->${nextIdx} | ${fromAd?.kind ?? "?"}/${fromAd?.type ?? "?"} -> ${toAd?.kind ?? "?"}/${toAd?.type ?? "?"}`
+      `next ${current}->${nextIdx} | ${fromAd?.kind ?? "?"}/${fromAd?.type ?? "?"} -> ${toAd?.kind ?? "?"}/${toAd?.type ?? "?"} [300ms]`
     );
-    setCurrent(nextIdx);
-    setTick((t) => t + 1);
-    adsSinceWidgetRef.current += 1;
-    if (adsSinceWidgetRef.current >= widgetFrequency) {
-      showNextWidget();
+
+    // ── Cleanup AGRESIVO del video actual ANTES de avanzar ──
+    // Esto fuerza al WebView a soltar el hardware decoder. Sin esto,
+    // después de un PIPELINE_ERROR (especialmente del teaser), el
+    // decoder se queda en estado corrupto y los siguientes ads también
+    // fallan (cascade failure). React también limpia al unmount del
+    // AdFrame, pero hacerlo ANTES del setCurrent garantiza orden.
+    const v = videoRef.current;
+    if (v) {
+      try {
+        v.pause();
+        v.removeAttribute("src");
+        v.src = "";
+        v.load();
+      } catch {
+        /* ignore */
+      }
     }
+
+    // ── 300ms transition delay ──
+    // Durante este tiempo, transitioning=true → el ad layer no renderiza
+    // → se ve fondo dark. Le da al hardware decoder tiempo físico de
+    // soltar recursos antes de mountar el siguiente video. Cancela
+    // cualquier transición pendiente para evitar race conditions cuando
+    // hay errores rápidos consecutivos.
+    if (transitionTimerRef.current) {
+      clearTimeout(transitionTimerRef.current);
+    }
+    setTransitioning(true);
+    transitionTimerRef.current = setTimeout(() => {
+      setCurrent(nextIdx);
+      setTick((t) => t + 1);
+      adsSinceWidgetRef.current += 1;
+      if (adsSinceWidgetRef.current >= widgetFrequency) {
+        showNextWidget();
+      }
+      setTransitioning(false);
+      transitionTimerRef.current = null;
+    }, 300);
   }, [ads, current, logImpression, widgetFrequency, showNextWidget]);
 
   useEffect(() => {
@@ -1121,8 +1166,11 @@ export default function PlayerPage() {
           container en cada cambio de ad — solo intercambia el contenido.
           Sin esto, el des/mount del div completo causaba que el WebView
           mostrara blanco brevemente entre repaints. Con el container
-          persistente, el bg #0a0a0a queda continuo durante la transición. */}
-      {!activeWidget && ads.length > 0 && (() => {
+          persistente, el bg #0a0a0a queda continuo durante la transición.
+          También respeta `transitioning` (300ms entre ads) — durante ese
+          tiempo NO se monta ningún AdFrame, dejando que el decoder libere
+          recursos físicamente antes de cargar el siguiente video. */}
+      {!activeWidget && !transitioning && ads.length > 0 && (() => {
         const ad = ads[current];
         if (!ad) return null;
         return (
@@ -1234,7 +1282,7 @@ export default function PlayerPage() {
         }}
       >
         <div style={{ color: "#fbbf24", fontWeight: "bold", marginBottom: 2 }}>
-          DEBUG | ads={ads.length} cur={current} kind={ads[current]?.kind ?? "?"} widget={activeWidget ?? "-"}
+          DEBUG | ads={ads.length} cur={current} kind={ads[current]?.kind ?? "?"} widget={activeWidget ?? "-"} {transitioning ? "TRANSIT" : ""}
         </div>
         {debugLines.map((line, i) => (
           <div key={i}>{line}</div>
