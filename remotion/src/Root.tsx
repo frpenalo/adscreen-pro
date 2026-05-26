@@ -85,7 +85,7 @@ export const RemotionRoot: React.FC = () => {
 
       {/* ── SalesAd v2 — Kling clip + per-partner QR overlay ── */}
       {/* 1920x1080, 24fps, 10s = 240 frames. Match exacto del Kling clip   */}
-      {/* (que debe estar en remotion/public/sales-ad-clip.mp4). El Video    */}
+      {/* (que debe estar en remotion/public/Salesad.mp4). El Video         */}
       {/* component lo carga via staticFile. Per-partner: el QR (data URL)  */}
       {/* y el businessName vienen via inputProps del build script.         */}
       <Composition
@@ -96,7 +96,7 @@ export const RemotionRoot: React.FC = () => {
         width={1920}
         height={1080}
         defaultProps={{
-          klingClipPath: "sales-ad-clip.mp4",
+          klingClipPath: "Salesad.mp4",
           qrUrl:
             "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://adscreenpro.com",
           businessName: "Tu Barbería",

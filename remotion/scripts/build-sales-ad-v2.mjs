@@ -53,7 +53,7 @@ const OUT = path.join(ROOT, "out");
 const TMP = os.tmpdir();
 
 // El Kling clip debe estar acá. El user lo sube manualmente una vez.
-const KLING_CLIP_FILENAME = "sales-ad-clip.mp4";
+const KLING_CLIP_FILENAME = "Salesad.mp4";
 const KLING_CLIP_PATH = path.join(PUBLIC, KLING_CLIP_FILENAME);
 
 // ── Args ─────────────────────────────────────────────────────────────────────

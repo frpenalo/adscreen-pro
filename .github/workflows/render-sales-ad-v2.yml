@@ -70,12 +70,12 @@ jobs:
       - name: Verify Kling sales-ad clip exists
         working-directory: remotion
         run: |
-          if [ ! -f "public/sales-ad-clip.mp4" ]; then
-            echo "❌ Falta public/sales-ad-clip.mp4"
+          if [ ! -f "public/Salesad.mp4" ]; then
+            echo "❌ Falta public/Salesad.mp4"
             echo "Genera el clip en Kling con el prompt del SalesAd v2 y commitealo al repo antes."
             exit 1
           fi
-          echo "✓ Kling clip OK ($(du -h public/sales-ad-clip.mp4 | cut -f1))"
+          echo "✓ Kling clip OK ($(du -h public/Salesad.mp4 | cut -f1))"
 
       - name: Render SalesAd v2 and upload to Storage
         working-directory: remotion
