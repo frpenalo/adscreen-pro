@@ -155,8 +155,6 @@ async function main() {
   console.log(`   Signup URL: ${advertiserSignupUrl}\n`);
 
   // ── 1. Generar QR PNG + convertir a data URL ────────────────────────────
-  // Igual approach que el Awakening: data URL embebido evita fetch externo
-  // durante el Remotion render (que causaba issues en Fully Kiosk).
   console.log("📱 Generando QR PNG + convirtiendo a data URL...");
   const qrLocalPath = path.join(TMP, `sales-ad-v2-qr-${screenId}.png`);
   await QRCode.toFile(qrLocalPath, advertiserSignupUrl, {
@@ -178,78 +176,59 @@ async function main() {
     webpackOverride: (c) => c,
   });
 
-  // ── 3. Render SalesAdV2 composition ─────────────────────────────────────
-  console.log("\n🎬 Renderizando SalesAdV2 composition...");
-  const inputProps = {
-    klingClipPath: KLING_CLIP_FILENAME,
-    qrUrl: qrDataUrl,
-    businessName,
-  };
+  // ── 3. Render SalesAdOutro composition (SOLO texto + QR, sin Kling) ────
+  // El Kling clip NO entra en la composition — se concatena después via
+  // ffmpeg para evitar doble re-encoding que causaba stuttering en el Onn
+  // stick. Mismo approach que el Awakening teaser que sí funciona.
+  console.log("\n🎬 Renderizando SalesAdOutro composition (solo texto+QR)...");
+  const inputProps = { qrUrl: qrDataUrl, businessName };
   const composition = await selectComposition({
     serveUrl: bundleLocation,
-    id: "SalesAdV2",
+    id: "SalesAdOutro",
     inputProps,
   });
-  const rawPath = path.join(OUT, `sales-ad-v2-raw-${screenId}.mp4`);
+  const outroRawPath = path.join(OUT, `sales-ad-outro-raw-${screenId}.mp4`);
   await renderMedia({
     composition,
     serveUrl: bundleLocation,
     codec: "h264",
-    outputLocation: rawPath,
+    outputLocation: outroRawPath,
     inputProps,
-    // Remotion outputeará audio del Kling clip embebido (Kling clip viene
-    // sin audio → output Remotion también sin audio). El post-process
-    // agrega AAC silente.
     audioCodec: null,
     pixelFormat: "yuv420p",
     onProgress: ({ progress }) => {
       process.stdout.write(`\r   Progress: ${Math.round(progress * 100)}%`);
     },
   });
-  console.log(`\n✅ Render bruto → ${rawPath}`);
+  console.log(`\n✅ Outro renderizado → ${outroRawPath}`);
 
-  // ── 4. Re-encode Android-safe con AAC silente ───────────────────────────
-  // IDÉNTICO al post-process del Awakening teaser que funciona en Fully
-  // Kiosk: Baseline + bf=0 + yuv420p + BT.709 + AAC silente + 30fps +
-  // faststart.
-  console.log("\n🔧 Re-encode Android-safe con AAC silente...");
+  // ── 4. Concat Kling raw + outro + re-encode Android-safe ────────────────
+  // PIPELINE IDÉNTICO al Awakening teaser que SÍ funciona fluido en el
+  // Onn stick. El Kling solo pasa por UN re-encoding (este ffmpeg concat),
+  // no dos como el approach composite anterior. Eso era el origen del
+  // stuttering.
+  console.log("\n🔧 Concat Kling + outro + re-encode Android-safe...");
   const finalPath = path.join(OUT, `sales-ad-v2-${screenId}.mp4`);
   await runFfmpeg(
     [
       "-y",
-      "-i", rawPath,
+      "-i", KLING_CLIP_PATH,
+      "-i", outroRawPath,
       "-f", "lavfi",
       "-i", "aevalsrc=0:channel_layout=stereo:sample_rate=48000",
-      "-map", "0:v",
-      "-map", "1:a",
+      "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+      "-map", "[v]",
+      "-map", "2:a",
       "-c:v", "libx264",
       "-profile:v", "baseline",
       "-level", "4.0",
       "-pix_fmt", "yuv420p",
       "-bf", "0",
-      // Preset slow → mejor calidad por bitrate. El Onn stick batalla
-      // con motion artifacts; mejor encoding = menos artifacts = menos
-      // trabajo del decoder.
-      "-preset", "slow",
-      // CRF 20 (era 23) → más calidad, menos compresión agresiva. Cada
-      // frame tiene menos motion-vectors complejos que el decoder deba
-      // resolver. Costo: ~50% más bytes, pero el Onn no tiene problema
-      // con bandwidth, solo con decoding complexity.
-      "-crf", "20",
-      // ref=1 → solo 1 reference frame para inter-prediction. Reduce
-      // dramáticamente la memoria/trabajo del decoder. Cada P-frame
-      // solo depende del frame anterior, no de varios.
-      "-x264-params", "ref=1",
+      "-preset", "fast",
+      "-crf", "23",
       "-color_primaries", "bt709",
       "-color_trc", "bt709",
       "-colorspace", "bt709",
-      // Keyframe cada 30 frames (1s a 30fps). Máxima frecuencia de
-      // reset del decoder. Aumentado de 60 a 30 porque el SalesAd v2
-      // tiene contenido con dolly-in continuo + mucho detalle, decoder
-      // necesita más oportunidades de "reiniciarse".
-      "-g", "30",
-      "-keyint_min", "30",
-      "-sc_threshold", "0",
       "-r", "30",
       "-c:a", "aac",
       "-b:a", "128k",
@@ -257,7 +236,7 @@ async function main() {
       "-movflags", "+faststart",
       finalPath,
     ],
-    "re-encode Android-safe (GOP=30, CRF=20, ref=1 — máximo conservador)"
+    "concat Kling + outro + re-encode (igual al teaser que funciona)"
   );
 
   // ── 5. Upload a Storage ─────────────────────────────────────────────────
@@ -297,7 +276,7 @@ async function main() {
 
   // Cleanup
   try {
-    fs.unlinkSync(rawPath);
+    fs.unlinkSync(outroRawPath);
     fs.unlinkSync(qrLocalPath);
   } catch {
     /* ignore */

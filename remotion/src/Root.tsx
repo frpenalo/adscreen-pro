@@ -5,6 +5,7 @@ import { AdvertiserAd } from "./AdvertiserAd";
 import { SpecAd } from "./SpecAd";
 import { AwakeningOutro } from "./AwakeningOutro";
 import { SalesAdV2 } from "./SalesAdV2";
+import { SalesAdOutro } from "./SalesAdOutro";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -97,6 +98,23 @@ export const RemotionRoot: React.FC = () => {
         height={1080}
         defaultProps={{
           klingClipPath: "Salesad.mp4",
+          qrUrl:
+            "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://adscreenpro.com",
+          businessName: "Tu Barbería",
+        }}
+      />
+
+      {/* ── SalesAd v2 Outro — solo texto + QR, va DESPUÉS del Kling ── */}
+      {/* Pipeline tipo teaser: concat de Kling raw + este outro evita el     */}
+      {/* doble re-encoding del Kling que causaba stuttering. 6s @ 24fps.    */}
+      <Composition
+        id="SalesAdOutro"
+        component={SalesAdOutro}
+        durationInFrames={144}
+        fps={24}
+        width={1920}
+        height={1080}
+        defaultProps={{
           qrUrl:
             "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://adscreenpro.com",
           businessName: "Tu Barbería",
