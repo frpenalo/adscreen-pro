@@ -232,6 +232,15 @@ async function main() {
       "-color_primaries", "bt709",
       "-color_trc", "bt709",
       "-colorspace", "bt709",
+      // Keyframe forzado cada 60 frames (2 segundos a 30fps). Sin esto
+      // libx264 usa GOP=150+ por default, lo que genera stuttering en
+      // el hardware decoder del Onn stick — para cada P-frame el decoder
+      // debe mantener 150 frames de estado en memoria, sobrecarga
+      // brutal. Con GOP=60, el decoder se resetea cada 2s, carga
+      // sostenible. Ver diagnóstico en debug overlay logs.
+      "-g", "60",
+      "-keyint_min", "60",
+      "-sc_threshold", "0",
       "-r", "30",
       "-c:a", "aac",
       "-b:a", "128k",
@@ -239,7 +248,7 @@ async function main() {
       "-movflags", "+faststart",
       finalPath,
     ],
-    "re-encode Android-safe"
+    "re-encode Android-safe (GOP=60 para evitar decoder stutter)"
   );
 
   // ── 5. Upload a Storage ─────────────────────────────────────────────────
