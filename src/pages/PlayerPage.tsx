@@ -1095,16 +1095,22 @@ export default function PlayerPage() {
           ~300ms de fondo #0a0a0a visible mientras carga el siguiente)
           en lugar de crossfade suave. En contexto TV se ve como
           broadcast profesional, no amateur. */}
+      {/* Container PERMANENTE con bg dark. El key va en el AdFrame
+          interno (no en el div) para que React NO destruya/recrée el
+          container en cada cambio de ad — solo intercambia el contenido.
+          Sin esto, el des/mount del div completo causaba que el WebView
+          mostrara blanco brevemente entre repaints. Con el container
+          persistente, el bg #0a0a0a queda continuo durante la transición. */}
       {!activeWidget && ads.length > 0 && (() => {
         const ad = ads[current];
         if (!ad) return null;
         return (
           <div
-            key={ad.id}
             className="absolute inset-0"
             style={{ zIndex: 1, backgroundColor: "#0a0a0a" }}
           >
             <AdFrame
+              key={ad.id}
               ad={ad}
               videoRef={videoRef}
               onVideoEnded={next}
