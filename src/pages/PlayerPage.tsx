@@ -235,6 +235,28 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
     return () => ro.disconnect();
   }, [compute, ad.id]);
 
+  // Cleanup explícito del video element al unmount. React desmonta el
+  // AdFrame cuando current cambia, pero el WebView no siempre libera
+  // el hardware decoder slot al detach del DOM — especialmente Fully
+  // Kiosk/Android WebView. Forzar pause + clear src + load lo hace
+  // soltar el decoder de inmediato, dejándolo libre para el próximo ad.
+  // Sin esto, después de varias rotaciones el decoder pool se agota
+  // y los videos empiezan a quedar blancos.
+  useEffect(() => {
+    return () => {
+      const m = mediaRef.current as HTMLVideoElement | null;
+      if (m && "pause" in m) {
+        try {
+          m.pause();
+          m.removeAttribute("src");
+          m.load();
+        } catch {
+          /* ignore — best-effort cleanup */
+        }
+      }
+    };
+  }, []);
+
   // QR placement — reads per-product overrides stored in ad.metadata.qr_x/y/size_pct
   // (set by admin via QrPositionPicker). Falls back to the legacy bottom-right
   // 12% placement so older ads without those fields keep rendering the same.
@@ -271,32 +293,19 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
           }}
           src={ad.final_media_path}
           className="w-full h-full object-contain"
-          // preload="metadata" instead of "auto". Background:
-          // confirmed freeze pattern at Softmedia (TCL Google TV
-          // running Fully Kiosk) where the same SalesAd frame
-          // froze within ~1h even after we fixed the H.264 encoding
-          // and added a cache-buster. Same-frame freeze regardless
-          // of encoding pointed to decoder pressure, not the file.
+          // preload="auto" + autoPlay para TODOS los videos.
           //
-          // With preload="auto", the browser pre-decodes EVERY <video>
-          // in the DOM into memory — even hidden ones. The player
-          // keeps all ads mounted (opacity 0 for inactive) for the
-          // crossfade. On a TV-class WebView with 1-2 hardware
-          // decoders, that exceeds the decoder budget after enough
-          // rotations and one freezes mid-frame.
+          // Antes esto causaba decoder pressure porque manteníamos los
+          // 30+ ads mounted simultáneamente (cada uno con preload="auto"
+          // chupaba un decoder slot, saturando los ~3 hardware decoders
+          // del Onn stick → whack-a-mole de videos blancos).
           //
-          // "metadata" only fetches the container header (duration,
-          // dimensions, codec) — frames are decoded lazily when
-          // play() is called. duration is still known so the safety
-          // timer and freeze detector work the same way.
-          // SOLO teaser usa preload="auto" + autoPlay attribute. Es la
-          // única config que tenía Teaser ✓ + Shopify ✓ funcionando
-          // simultáneamente (commit 77fcb73). SalesAd queda con su
-          // problema original (a tratar después con otro approach:
-          // probablemente re-render con encoding tipo Shopify — High
-          // profile + AAC 93k — para que no necesite preload agresivo).
-          preload={ad.kind === "teaser" ? "auto" : "metadata"}
-          autoPlay={ad.kind === "teaser"}
+          // Después del refactor arquitectural (PlayerPage solo monta
+          // el CURRENT ad), solo hay 1 video element en DOM a la vez =
+          // 1 decoder consumido = cero competencia. Podemos darle
+          // tratamiento agresivo a todos sin riesgo.
+          preload="auto"
+          autoPlay
           muted
           playsInline
           onEnded={onVideoEnded}
@@ -370,7 +379,7 @@ export default function PlayerPage() {
 
   const [ads, setAds] = useState<Ad[]>(() => loadCache(screenId));
   const [current, setCurrent] = useState(0);
-  const [prev, setPrev] = useState<number | null>(null); // crossfade: keeps old content visible
+  // (eliminado prev/setPrev — ya no hay crossfade, solo el current se monta)
   const [loaded, setLoaded] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [activeWidget, setActiveWidget] = useState<WidgetType | null>(null);
@@ -387,7 +396,7 @@ export default function PlayerPage() {
   const [revealingSelfieId, setRevealingSelfieId] = useState<string | null>(null);
   const imageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const widgetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // (eliminado prevTimerRef — ya no hay timer de crossfade)
   // Safety-net timer for videos: some kiosk browsers (Fully Kiosk on Android
   // WebView, certain Smart TV browsers) don't reliably fire `onEnded` after
   // an H.264 video finishes. Without this timer the carousel gets stuck on
@@ -569,16 +578,15 @@ export default function PlayerPage() {
   const next = useCallback(() => {
     if (ads[current]) logImpression(ads[current]);
     const nextIdx = (current + 1) % Math.max(ads.length, 1);
-    setPrev(current);                          // keep current visible behind new content
     setCurrent(nextIdx);
     setTick((t) => t + 1);
     adsSinceWidgetRef.current += 1;
     if (adsSinceWidgetRef.current >= widgetFrequency) {
       showNextWidget();
     }
-    // Clear prev after crossfade completes (300ms)
-    if (prevTimerRef.current) clearTimeout(prevTimerRef.current);
-    prevTimerRef.current = setTimeout(() => setPrev(null), 300);
+    // No prev/crossfade logic — solo el current ad se monta (arquitectura
+    // kiosk-safe). React desmonta el AdFrame viejo cuando current cambia;
+    // el cleanup explícito en AdFrame libera el decoder slot.
   }, [ads, current, logImpression, widgetFrequency, showNextWidget]);
 
   useEffect(() => {
@@ -1068,31 +1076,34 @@ export default function PlayerPage() {
       <div className="absolute inset-0 z-0" style={{ background: "radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0a 100%)" }} />
       {/* Pixel activity element — 1px animated dot keeps signal active during transitions */}
       <div className="absolute bottom-0 left-0 z-0 w-px h-px animate-pulse" style={{ backgroundColor: "#111" }} />
-      {/* Ads */}
-      {ads.map((ad, index) => {
-        const isActive = !activeWidget && index === current;
-        const isPrev  = !activeWidget && index === prev;
-        // Active: z=2 (on top, fades in). Prev: z=1 (stays visible underneath). Others: z=0 hidden.
-        const zIdx   = isActive ? 2 : isPrev ? 1 : 0;
-        const opacity = isActive ? 1 : isPrev ? 1 : 0;
+      {/* Solo el ad CURRENT se monta en el DOM (arquitectura kiosk-safe).
+          Razón: el Onn stick / Fully Kiosk WebView tiene ~3 decoders H.264
+          hardware. Antes manteníamos los 30+ ads montados en paralelo
+          (para crossfade), y cualquier video con preload="auto" o autoPlay
+          atributo se chupaba un decoder en background — el ad current
+          terminaba sin decoder libre → pantalla blanca whack-a-mole.
+          Ahora: 1 video a la vez = 1 decoder consumido. No hay
+          competencia. Trade-off: las transiciones son hard cuts (con
+          ~300ms de fondo #0a0a0a visible mientras carga el siguiente)
+          en lugar de crossfade suave. En contexto TV se ve como
+          broadcast profesional, no amateur. */}
+      {!activeWidget && ads.length > 0 && (() => {
+        const ad = ads[current];
+        if (!ad) return null;
         return (
-        <div
-          key={ad.id}
-          className="absolute inset-0 transition-opacity duration-300"
-          style={{ opacity, zIndex: zIdx }}
-        >
-          <AdFrame
-            ad={ad}
-            videoRef={index === current ? videoRef : undefined}
-            onVideoEnded={next}
-            onVideoError={next}
-            onVideoStalled={index === current ? onVideoStallOrWait : undefined}
-            onVideoWaiting={index === current ? onVideoStallOrWait : undefined}
-            onVideoPlaying={index === current ? onVideoPlaying : undefined}
-          />
-        </div>
+          <div key={ad.id} className="absolute inset-0" style={{ zIndex: 1 }}>
+            <AdFrame
+              ad={ad}
+              videoRef={videoRef}
+              onVideoEnded={next}
+              onVideoError={next}
+              onVideoStalled={onVideoStallOrWait}
+              onVideoWaiting={onVideoStallOrWait}
+              onVideoPlaying={onVideoPlaying}
+            />
+          </div>
         );
-      })}
+      })()}
 
       {/* Widgets */}
       <div
