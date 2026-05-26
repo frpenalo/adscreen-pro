@@ -283,6 +283,7 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
           alt=""
           className="w-full h-full object-contain"
           draggable={false}
+          style={{ backgroundColor: "#0a0a0a" }}
           onLoad={compute}
         />
       ) : (
@@ -293,6 +294,13 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
           }}
           src={ad.final_media_path}
           className="w-full h-full object-contain"
+          // Fondo dark explícito para el video element. Sin esto, Fully
+          // Kiosk WebView muestra blanco en el espacio del <video> entre
+          // que el element mounta y el primer frame decodifica (~200ms).
+          // Especialmente visible ahora con el refactor que des/remonta
+          // ads en cada transición. Coordinated con el bg #0a0a0a del
+          // wrapper y body para que no haya flash blanco.
+          style={{ backgroundColor: "#0a0a0a" }}
           // preload="auto" + autoPlay para TODOS los videos.
           //
           // Antes esto causaba decoder pressure porque manteníamos los
@@ -1091,7 +1099,11 @@ export default function PlayerPage() {
         const ad = ads[current];
         if (!ad) return null;
         return (
-          <div key={ad.id} className="absolute inset-0" style={{ zIndex: 1 }}>
+          <div
+            key={ad.id}
+            className="absolute inset-0"
+            style={{ zIndex: 1, backgroundColor: "#0a0a0a" }}
+          >
             <AdFrame
               ad={ad}
               videoRef={videoRef}
