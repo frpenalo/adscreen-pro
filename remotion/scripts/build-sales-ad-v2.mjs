@@ -227,19 +227,28 @@ async function main() {
       "-level", "4.0",
       "-pix_fmt", "yuv420p",
       "-bf", "0",
-      "-preset", "fast",
-      "-crf", "23",
+      // Preset slow → mejor calidad por bitrate. El Onn stick batalla
+      // con motion artifacts; mejor encoding = menos artifacts = menos
+      // trabajo del decoder.
+      "-preset", "slow",
+      // CRF 20 (era 23) → más calidad, menos compresión agresiva. Cada
+      // frame tiene menos motion-vectors complejos que el decoder deba
+      // resolver. Costo: ~50% más bytes, pero el Onn no tiene problema
+      // con bandwidth, solo con decoding complexity.
+      "-crf", "20",
+      // ref=1 → solo 1 reference frame para inter-prediction. Reduce
+      // dramáticamente la memoria/trabajo del decoder. Cada P-frame
+      // solo depende del frame anterior, no de varios.
+      "-x264-params", "ref=1",
       "-color_primaries", "bt709",
       "-color_trc", "bt709",
       "-colorspace", "bt709",
-      // Keyframe forzado cada 60 frames (2 segundos a 30fps). Sin esto
-      // libx264 usa GOP=150+ por default, lo que genera stuttering en
-      // el hardware decoder del Onn stick — para cada P-frame el decoder
-      // debe mantener 150 frames de estado en memoria, sobrecarga
-      // brutal. Con GOP=60, el decoder se resetea cada 2s, carga
-      // sostenible. Ver diagnóstico en debug overlay logs.
-      "-g", "60",
-      "-keyint_min", "60",
+      // Keyframe cada 30 frames (1s a 30fps). Máxima frecuencia de
+      // reset del decoder. Aumentado de 60 a 30 porque el SalesAd v2
+      // tiene contenido con dolly-in continuo + mucho detalle, decoder
+      // necesita más oportunidades de "reiniciarse".
+      "-g", "30",
+      "-keyint_min", "30",
       "-sc_threshold", "0",
       "-r", "30",
       "-c:a", "aac",
@@ -248,7 +257,7 @@ async function main() {
       "-movflags", "+faststart",
       finalPath,
     ],
-    "re-encode Android-safe (GOP=60 para evitar decoder stutter)"
+    "re-encode Android-safe (GOP=30, CRF=20, ref=1 — máximo conservador)"
   );
 
   // ── 5. Upload a Storage ─────────────────────────────────────────────────

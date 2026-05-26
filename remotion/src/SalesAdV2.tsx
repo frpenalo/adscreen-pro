@@ -233,17 +233,21 @@ export const SalesAdV2: React.FC<SalesAdV2Props> = ({
           Anúnciate Aquí
         </div>
 
-        {/* H2: "y en otras pantallas alrededor de la ciudad" */}
+        {/* H2: "y en otras pantallas alrededor de la ciudad"
+            Texto OSCURO con peso 700 y stroke blanco para garantizar
+            legibilidad sobre el fondo cream/warm del Kling final frame.
+            Antes era CREAM (#fef3c7) que sobre cream = invisible. */}
         <div
           style={{
             opacity: revealH2Opacity,
             transform: `translateY(${revealH2Y}px)`,
             fontFamily: "system-ui, -apple-system, sans-serif",
             fontSize: 38,
-            fontWeight: 500,
+            fontWeight: 700,
             letterSpacing: "0.1em",
-            color: CREAM,
-            textShadow: "0 2px 16px rgba(0,0,0,0.8)",
+            color: "#1a0a0a",
+            textShadow:
+              "0 0 8px rgba(255,255,255,0.95), 0 0 16px rgba(255,255,255,0.85), 0 2px 4px rgba(0,0,0,0.4)",
             textAlign: "center",
             marginBottom: 40,
             maxWidth: "70%",
@@ -324,7 +328,10 @@ export const SalesAdV2: React.FC<SalesAdV2Props> = ({
           })}
         </div>
 
-        {/* Footer: business name + CTA pequeño */}
+        {/* Footer: business name + CTA pequeño
+            Texto oscuro con stroke blanco igual que el H2 — garantiza
+            legibilidad sobre el fondo cream/warm del frame final del
+            Kling. Antes eran CREAM/white = invisibles. */}
         <div
           style={{
             opacity: footerOpacity,
@@ -335,10 +342,11 @@ export const SalesAdV2: React.FC<SalesAdV2Props> = ({
             style={{
               fontFamily: "system-ui, -apple-system, sans-serif",
               fontSize: 26,
-              fontWeight: 600,
+              fontWeight: 800,
               letterSpacing: "0.15em",
-              color: CREAM,
-              textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+              color: "#1a0a0a",
+              textShadow:
+                "0 0 6px rgba(255,255,255,0.95), 0 0 12px rgba(255,255,255,0.85), 0 2px 3px rgba(0,0,0,0.4)",
               textTransform: "uppercase",
               marginBottom: 6,
             }}
@@ -349,10 +357,11 @@ export const SalesAdV2: React.FC<SalesAdV2Props> = ({
             style={{
               fontFamily: "system-ui, -apple-system, sans-serif",
               fontSize: 18,
-              fontWeight: 400,
+              fontWeight: 700,
               letterSpacing: "0.3em",
-              color: "rgba(255,255,255,0.7)",
-              textShadow: "0 2px 8px rgba(0,0,0,0.8)",
+              color: "#1a0a0a",
+              textShadow:
+                "0 0 5px rgba(255,255,255,0.95), 0 0 10px rgba(255,255,255,0.85)",
               textTransform: "uppercase",
             }}
           >
