@@ -235,23 +235,19 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
     return () => ro.disconnect();
   }, [compute, ad.id]);
 
-  // Cleanup explícito del video element al unmount. React desmonta el
-  // AdFrame cuando current cambia, pero el WebView no siempre libera
-  // el hardware decoder slot al detach del DOM — especialmente Fully
-  // Kiosk/Android WebView. Forzar pause + clear src + load lo hace
-  // soltar el decoder de inmediato, dejándolo libre para el próximo ad.
-  // Sin esto, después de varias rotaciones el decoder pool se agota
-  // y los videos empiezan a quedar blancos.
+  // Cleanup minimalista al unmount: solo pause(). React maneja el resto
+  // del DOM removal de forma estándar. Antes intentaba pause + remove src
+  // + load(), pero el load() re-emite eventos que pueden interferir con
+  // el nuevo ad montando en paralelo — causaba stuttering. Confiar en
+  // que React + el browser limpian el video al detach es más estable.
   useEffect(() => {
     return () => {
       const m = mediaRef.current as HTMLVideoElement | null;
       if (m && "pause" in m) {
         try {
           m.pause();
-          m.removeAttribute("src");
-          m.load();
         } catch {
-          /* ignore — best-effort cleanup */
+          /* ignore */
         }
       }
     };
