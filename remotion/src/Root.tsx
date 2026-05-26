@@ -4,6 +4,7 @@ import { SalesAd } from "./SalesAd";
 import { AdvertiserAd } from "./AdvertiserAd";
 import { SpecAd } from "./SpecAd";
 import { AwakeningOutro } from "./AwakeningOutro";
+import { SalesAdV2 } from "./SalesAdV2";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -80,6 +81,26 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         defaultProps={{}}
+      />
+
+      {/* ── SalesAd v2 — Kling clip + per-partner QR overlay ── */}
+      {/* 1920x1080, 24fps, 10s = 240 frames. Match exacto del Kling clip   */}
+      {/* (que debe estar en remotion/public/sales-ad-clip.mp4). El Video    */}
+      {/* component lo carga via staticFile. Per-partner: el QR (data URL)  */}
+      {/* y el businessName vienen via inputProps del build script.         */}
+      <Composition
+        id="SalesAdV2"
+        component={SalesAdV2}
+        durationInFrames={240}
+        fps={24}
+        width={1920}
+        height={1080}
+        defaultProps={{
+          klingClipPath: "sales-ad-clip.mp4",
+          qrUrl:
+            "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://adscreenpro.com",
+          businessName: "Tu Barbería",
+        }}
       />
 
       {/* ── Awakening Outro (Segment D del teaser cinemático) ── */}
