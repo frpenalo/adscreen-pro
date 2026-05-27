@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { NewsBackground } from "./NewsBackground";
 
 interface NewsItem {
   title: string;
@@ -81,64 +82,114 @@ export default function NewsWidget() {
   const slide = slides[current];
 
   return (
-    <div
-      className="fixed inset-0 flex flex-col items-center justify-center gap-10 px-16"
-      style={{ background: "linear-gradient(135deg, #111827 0%, #1f2937 100%)" }}
-    >
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <span style={{ fontSize: "3.5vw" }}>📰</span>
-        <div>
-          <div className="text-white font-semibold tracking-widest uppercase" style={{ fontSize: "1.8vw" }}>
-            Noticias
-          </div>
-          <div className="text-white/40 tracking-widest uppercase" style={{ fontSize: "1.1vw" }}>
-            Hoy
-          </div>
-        </div>
-      </div>
+    <div className="fixed inset-0 overflow-hidden">
+      {/* Background animado: gradient + mapa mundial fade + streams +
+          data nodes pulsando. Comunica "global news broadcast". */}
+      <NewsBackground />
 
-      {/* Content */}
-      {error && (
-        <p className="text-white/40 tracking-widest uppercase" style={{ fontSize: "2vw" }}>
-          Noticias no disponibles
-        </p>
-      )}
-
-      {!error && slides.length === 0 && (
-        <p className="text-white/40 tracking-widest uppercase animate-pulse" style={{ fontSize: "2vw" }}>
-          Cargando...
-        </p>
-      )}
-
-      {!error && slide && (
-        <div className="w-full max-w-5xl space-y-6">
-          {slide.map((item, i) => (
-            <div key={i} className="flex items-start gap-4">
-              <div className="w-1.5 h-1.5 rounded-full bg-white/40 mt-3 flex-shrink-0" />
-              <div>
-                <p className="text-white font-light leading-snug" style={{ fontSize: "2.6vw" }}>
-                  {item.title}
-                </p>
-                {(item.pubDate || item.source) && (
-                  <p className="text-white/30 mt-1 tracking-widest" style={{ fontSize: "1.2vw" }}>
-                    {[item.pubDate, item.source].filter(Boolean).join(" · ")}
-                  </p>
-                )}
-              </div>
+      {/* Contenido principal — headlines ocupan ancho full sin card */}
+      <div className="relative w-full h-full flex flex-col items-center justify-center gap-10 px-16">
+        {/* Header */}
+        <div
+          className="flex items-center gap-3"
+          style={{ textShadow: "0 2px 12px rgba(0,0,0,0.9)" }}
+        >
+          <span style={{ fontSize: "3.5vw" }}>📰</span>
+          <div>
+            <div
+              className="text-white font-semibold tracking-widest uppercase"
+              style={{ fontSize: "1.8vw" }}
+            >
+              Noticias
             </div>
-          ))}
+            <div
+              className="text-white/60 tracking-widest uppercase"
+              style={{ fontSize: "1.1vw" }}
+            >
+              Hoy
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* Content */}
+        {error && (
+          <p
+            className="text-white/70 tracking-widest uppercase"
+            style={{
+              fontSize: "2vw",
+              textShadow: "0 2px 12px rgba(0,0,0,0.9)",
+            }}
+          >
+            Noticias no disponibles
+          </p>
+        )}
+
+        {!error && slides.length === 0 && (
+          <p
+            className="text-white/70 tracking-widest uppercase animate-pulse"
+            style={{
+              fontSize: "2vw",
+              textShadow: "0 2px 12px rgba(0,0,0,0.9)",
+            }}
+          >
+            Cargando...
+          </p>
+        )}
+
+        {!error && slide && (
+          <div className="w-full max-w-5xl space-y-6">
+            {slide.map((item, i) => (
+              <div key={i} className="flex items-start gap-4">
+                <div
+                  className="w-2 h-2 rounded-full mt-3 flex-shrink-0"
+                  style={{
+                    backgroundColor: "#fbbf24",
+                    boxShadow: "0 0 8px rgba(251,191,36,0.8)",
+                  }}
+                />
+                <div>
+                  <p
+                    className="text-white font-light leading-snug"
+                    style={{
+                      fontSize: "2.6vw",
+                      textShadow:
+                        "0 2px 16px rgba(0,0,0,0.95), 0 0 30px rgba(0,0,0,0.7)",
+                    }}
+                  >
+                    {item.title}
+                  </p>
+                  {(item.pubDate || item.source) && (
+                    <p
+                      className="text-white/60 mt-1 tracking-widest"
+                      style={{
+                        fontSize: "1.2vw",
+                        textShadow: "0 1px 8px rgba(0,0,0,0.9)",
+                      }}
+                    >
+                      {[item.pubDate, item.source].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Slide counter (diagnostic) */}
       {!error && slides.length > 0 && (
-        <div className="absolute bottom-4 left-4 text-white/30 text-xs tracking-widest tabular-nums">
+        <div
+          className="absolute bottom-4 left-4 text-white/50 text-xs tracking-widest tabular-nums"
+          style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
+        >
           {current + 1} / {slides.length}
         </div>
       )}
 
-      <div className="absolute bottom-4 right-4 text-white/15 text-xs tracking-widest uppercase">
+      <div
+        className="absolute bottom-4 right-4 text-white/40 text-xs tracking-widest uppercase"
+        style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
+      >
         AdScreenPro
       </div>
     </div>
