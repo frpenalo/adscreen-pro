@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { pickNextJoke, type LocalJoke } from "@/lib/jokes-es";
+import { JokeBackground } from "./JokeBackground";
 
 export default function JokeWidget() {
   const [joke, setJoke] = useState<LocalJoke | null>(null);
@@ -28,35 +29,67 @@ export default function JokeWidget() {
   }, [joke]);
 
   return (
-    <div
-      className="fixed inset-0 flex flex-col items-center justify-center gap-8 px-16"
-      style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)" }}
-    >
-      <div style={{ fontSize: "5vw" }}>😄</div>
+    <div className="fixed inset-0 overflow-hidden">
+      {/* Background animado: warm gradient + blobs + confetti + sparkles */}
+      <JokeBackground />
 
-      {joke && (
-        <div className="text-center space-y-10 max-w-4xl">
-          <p
-            className="text-white font-light leading-tight"
-            style={{ fontSize: "3.5vw" }}
-          >
-            {joke.setup}
-          </p>
+      {/* Contenido principal — emoji + setup + punchline */}
+      <div className="relative w-full h-full flex flex-col items-center justify-center gap-8 px-16">
+        <div
+          style={{
+            fontSize: "5vw",
+            filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.5))",
+          }}
+        >
+          😄
+        </div>
+
+        {joke && (
           <div
-            className="transition-all duration-700"
-            style={{ opacity: showPunchline ? 1 : 0 }}
+            className="text-center space-y-10 max-w-4xl rounded-3xl px-12 py-10"
+            style={{
+              backgroundColor: "rgba(0,0,0,0.45)",
+              backdropFilter: "blur(14px)",
+              WebkitBackdropFilter: "blur(14px)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              boxShadow:
+                "0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset",
+            }}
           >
             <p
-              className="text-yellow-300 font-semibold leading-tight"
-              style={{ fontSize: "3.5vw" }}
+              className="text-white font-light leading-tight"
+              style={{
+                fontSize: "3.5vw",
+                textShadow:
+                  "0 2px 16px rgba(0,0,0,0.9), 0 0 30px rgba(0,0,0,0.6)",
+              }}
             >
-              {joke.delivery}
+              {joke.setup}
             </p>
+            <div
+              className="transition-all duration-700"
+              style={{ opacity: showPunchline ? 1 : 0 }}
+            >
+              <p
+                className="font-semibold leading-tight"
+                style={{
+                  fontSize: "3.5vw",
+                  color: "#fde047",
+                  textShadow:
+                    "0 2px 16px rgba(0,0,0,0.95), 0 0 30px rgba(253,224,71,0.4)",
+                }}
+              >
+                {joke.delivery}
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className="absolute bottom-4 right-4 text-white/15 text-xs tracking-widest uppercase">
+      <div
+        className="absolute bottom-4 right-4 text-white/40 text-xs tracking-widest uppercase"
+        style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
+      >
         AdScreenPro
       </div>
     </div>
