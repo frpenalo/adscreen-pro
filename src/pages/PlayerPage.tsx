@@ -361,33 +361,8 @@ function AdFrame({ ad, videoRef, onVideoEnded, onVideoError, onVideoStalled, onV
   );
 }
 
-// ── Debug overlay state — singleton para que cualquier componente
-// pueda loggear eventos sin pasarlos via props. Visible en la TV
-// como overlay top-right. Temporal — quitar cuando termine el debug.
-const debugLogRef: { current: string[] } = { current: [] };
-const debugListeners: Array<() => void> = [];
-function logDebug(msg: string) {
-  const ts = new Date().toISOString().substr(11, 12);
-  debugLogRef.current = [...debugLogRef.current.slice(-14), `${ts} ${msg}`];
-  debugListeners.forEach((fn) => fn());
-}
-
-function useDebugLog() {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const fn = () => setTick((t) => t + 1);
-    debugListeners.push(fn);
-    return () => {
-      const i = debugListeners.indexOf(fn);
-      if (i >= 0) debugListeners.splice(i, 1);
-    };
-  }, []);
-  return debugLogRef.current;
-}
-
 export default function PlayerPage() {
   const { screenId } = useParams<{ screenId?: string }>();
-  const debugLines = useDebugLog();
 
   // Keep the TV awake. Without this, Android/ChromeOS panels (and even
   // some kiosk browsers) will dim or sleep after a few minutes of no
@@ -612,23 +587,14 @@ export default function PlayerPage() {
     const wType = WIDGETS[widgetIndexRef.current % WIDGETS.length];
     widgetIndexRef.current += 1;
     adsSinceWidgetRef.current = 0;
-    logDebug(`widget START ${wType} (idx=${widgetIndexRef.current - 1})`);
     setActiveWidget(wType);
     clearWidgetTimer();
-    widgetTimerRef.current = setTimeout(() => {
-      logDebug(`widget END ${wType}`);
-      setActiveWidget(null);
-    }, WIDGET_DURATION);
+    widgetTimerRef.current = setTimeout(() => setActiveWidget(null), WIDGET_DURATION);
   }, []);
 
   const next = useCallback(() => {
     if (ads[current]) logImpression(ads[current]);
     const nextIdx = (current + 1) % Math.max(ads.length, 1);
-    const fromAd = ads[current];
-    const toAd = ads[nextIdx];
-    logDebug(
-      `next ${current}->${nextIdx} | ${fromAd?.kind ?? "?"}/${fromAd?.type ?? "?"} -> ${toAd?.kind ?? "?"}/${toAd?.type ?? "?"} [300ms]`
-    );
 
     // ── Cleanup AGRESIVO del video actual ANTES de avanzar ──
     // Esto fuerza al WebView a soltar el hardware decoder. Sin esto,
@@ -715,12 +681,11 @@ export default function PlayerPage() {
     const ad = ads[current];
     if (ad?.type === "video" && videoRef.current) {
       const v = videoRef.current;
-      logDebug(`video MOUNT idx=${current} ${ad.kind}/${ad.final_media_path.split("/").pop()?.split("?")[0]?.substr(0, 24)}`);
       v.currentTime = 0;
       v.muted = true;
-      v.play()
-        .then(() => logDebug(`video PLAY ok idx=${current}`))
-        .catch((err) => logDebug(`video PLAY rej: ${err.name}`));
+      v.play().catch((err) =>
+        console.warn("video play() rejected (safety timer cubre):", err)
+      );
 
       // Re-attempt play cuando la pestaña vuelva a primer plano. En
       // TV Bro / Chrome WebView, cuando el tab se backgrouna Chrome
@@ -811,15 +776,13 @@ export default function PlayerPage() {
   // would also catch but slower.
   const onVideoStallOrWait = useCallback(() => {
     if (stallTimerRef.current) return;
-    logDebug(`video STALL/WAIT (5s recovery timer armed)`);
     stallTimerRef.current = setTimeout(() => {
-      logDebug(`video STALL no recovery, advancing`);
+      console.warn("[player] video stall did not recover in 5s — advancing");
       stallTimerRef.current = null;
       next();
     }, 5000);
   }, [next]);
   const onVideoPlaying = useCallback(() => {
-    if (stallTimerRef.current) logDebug(`video RECOVERED (clearing stall timer)`);
     clearStallTimer();
   }, []);
 
@@ -1182,12 +1145,8 @@ export default function PlayerPage() {
               key={ad.id}
               ad={ad}
               videoRef={videoRef}
-              onVideoEnded={() => { logDebug(`video ENDED idx=${current}`); next(); }}
-              onVideoError={() => {
-                const err = videoRef.current?.error;
-                logDebug(`video ERROR idx=${current} code=${err?.code} msg=${err?.message?.substr(0, 30)}`);
-                next();
-              }}
+              onVideoEnded={next}
+              onVideoError={next}
               onVideoStalled={onVideoStallOrWait}
               onVideoWaiting={onVideoStallOrWait}
               onVideoPlaying={onVideoPlaying}
@@ -1261,32 +1220,6 @@ export default function PlayerPage() {
       {/* Watermark */}
       <div className="absolute bottom-3 right-4 z-10 pointer-events-none">
         <span className="text-white/15 text-xs tracking-widest uppercase select-none">AdScreenPro</span>
-      </div>
-
-      {/* ── DEBUG OVERLAY (temporal — quitar cuando terminemos debug) ── */}
-      {/* Esquina top-right. Muestra los últimos eventos (mount, play, */}
-      {/* next, error, etc.) para que el usuario fotografíe la TV y    */}
-      {/* mande el estado real cuando se vea algo raro.                 */}
-      <div
-        className="fixed top-2 right-2 z-[9999] pointer-events-none font-mono"
-        style={{
-          background: "rgba(0,0,0,0.75)",
-          color: "#fff",
-          fontSize: 11,
-          lineHeight: 1.3,
-          padding: "6px 8px",
-          maxWidth: 480,
-          maxHeight: 280,
-          overflow: "hidden",
-          borderRadius: 4,
-        }}
-      >
-        <div style={{ color: "#fbbf24", fontWeight: "bold", marginBottom: 2 }}>
-          DEBUG | ads={ads.length} cur={current} kind={ads[current]?.kind ?? "?"} widget={activeWidget ?? "-"} {transitioning ? "TRANSIT" : ""}
-        </div>
-        {debugLines.map((line, i) => (
-          <div key={i}>{line}</div>
-        ))}
       </div>
     </div>
   );
