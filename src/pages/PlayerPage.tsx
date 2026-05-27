@@ -18,7 +18,6 @@ import WeatherWidget from "@/components/player/WeatherWidget";
 import JokeWidget from "@/components/player/JokeWidget";
 import SportsWidget from "@/components/player/SportsWidget";
 import NewsWidget from "@/components/player/NewsWidget";
-import SelfieWidget from "@/components/player/SelfieWidget";
 import CinematicReveal from "@/components/selfie/CinematicReveal";
 import { useWakeLock } from "@/hooks/useWakeLock";
 
@@ -41,21 +40,17 @@ interface Ad {
   customer_title?: string | null;
 }
 
-type WidgetType = "clock" | "weather" | "joke" | "sports" | "news" | "selfie-cta";
-// selfie-cta repeated 3x so the QR call-to-action sits at ~33% of
-// widget slots (vs 16% if it were just one entry). The QR is what
-// drives new customers to scan and participate — making it more
-// frequent than the ambient widgets (clock/weather) is the right
-// trade-off for a conversion-focused screen.
+type WidgetType = "clock" | "weather" | "joke" | "sports" | "news";
+// El call-to-action de la selfie ya no vive como widget — ahora lo cubre
+// el teaser cinematográfico "Awakening" que se inyecta en la rotación de
+// ads (ver más abajo). El viejo SelfieWidget (slide de emojis rotando con
+// QR) fue eliminado.
 const WIDGETS: WidgetType[] = [
   "clock",
   "weather",
   "joke",
   "sports",
   "news",
-  "selfie-cta",
-  "selfie-cta",
-  "selfie-cta",
 ];
 
 // Ratio for interleaving customer selfies into the ad rotation.
@@ -962,9 +957,10 @@ export default function PlayerPage() {
       }
 
       // ── Inyectar teaser "Awakening" cada N slots ──────────────────
-      // Hace de "trailer" antes de los slots de selfie-cta. Se mete
-      // DESPUÉS del interleave de selfies para que cuente sobre la
-      // rotación final (ads + selfies), no solo los ads originales.
+      // El teaser cinematográfico hace de call-to-action para la selfie
+      // (reemplazó al viejo SelfieWidget de emojis rotando + QR). Se
+      // inserta DESPUÉS del interleave de selfies para que cuente sobre
+      // la rotación final (ads + selfies), no solo los ads originales.
       // Si la rotación tiene <N slots, igual metemos UN teaser al
       // final para que al menos aparezca una vez por ciclo en
       // rotaciones cortas (partner nuevo con pocos ads).
@@ -1165,7 +1161,6 @@ export default function PlayerPage() {
         {activeWidget === "joke"       && <JokeWidget />}
         {activeWidget === "sports"     && <SportsWidget />}
         {activeWidget === "news"       && <NewsWidget />}
-        {activeWidget === "selfie-cta" && screenId && <SelfieWidget screenId={screenId} />}
       </div>
 
       {/* Cinematic Reveal — sits ON TOP of everything for 5s when a
