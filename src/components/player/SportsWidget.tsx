@@ -356,47 +356,93 @@ export default function SportsWidget() {
 
   return (
     <div
-      className="fixed inset-0 flex flex-col items-center justify-center gap-8"
-      style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)" }}
+      className="fixed inset-0"
+      style={{
+        backgroundImage: "url(/widgets/sports-bg.png)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundColor: "#0a0a0a",
+      }}
     >
-      {loading && (
-        <p className="text-white/30 tracking-widest uppercase animate-pulse" style={{ fontSize: "2vw" }}>
-          Cargando resultados...
-        </p>
-      )}
+      {/* Subtle vignette overlay para profundidad y mejor contraste del card central */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.15) 40%, rgba(0,0,0,0.6) 100%)",
+        }}
+      />
 
-      {!loading && slides.length === 0 && (
-        <p className="text-white/30 tracking-widest uppercase" style={{ fontSize: "2vw" }}>
-          No hay partidos hoy
-        </p>
-      )}
+      {/* Contenedor central con flex para centrar el card */}
+      <div className="relative w-full h-full flex items-center justify-center">
+        {loading && (
+          <p
+            className="text-white/70 tracking-widest uppercase animate-pulse"
+            style={{
+              fontSize: "2vw",
+              textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+            }}
+          >
+            Cargando resultados...
+          </p>
+        )}
 
-      {!loading && slide && (
-        <>
-          {/* Sport header */}
-          <div className="text-white/30 tracking-widest uppercase flex items-center gap-2" style={{ fontSize: "1.8vw" }}>
-            <span>{slide.icon}</span>
-            <span>{slide.sport}</span>
+        {!loading && slides.length === 0 && (
+          <p
+            className="text-white/70 tracking-widest uppercase"
+            style={{
+              fontSize: "2vw",
+              textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+            }}
+          >
+            No hay partidos hoy
+          </p>
+        )}
+
+        {!loading && slide && (
+          <div
+            className="flex flex-col items-center gap-6 rounded-3xl"
+            style={{
+              background: "rgba(0, 0, 0, 0.65)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              boxShadow:
+                "0 20px 60px rgba(0,0,0,0.6), 0 0 80px rgba(168,85,247,0.15)",
+              padding: "3vw 4vw",
+              minWidth: "32vw",
+            }}
+          >
+            {/* Sport header */}
+            <div
+              className="text-white/80 tracking-widest uppercase flex items-center gap-2"
+              style={{ fontSize: "1.6vw" }}
+            >
+              <span>{slide.icon}</span>
+              <span style={{ fontWeight: 600 }}>{slide.sport}</span>
+            </div>
+
+            {/* Games */}
+            <div className="flex items-center justify-center gap-0">
+              {slide.games.map((game, i) => (
+                <div key={i} className="flex items-center">
+                  <GameCardView game={game} />
+                  {i < slide.games.length - 1 && (
+                    <div className="h-20 w-px bg-white/10 mx-6" />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
+        )}
+      </div>
 
-          {/* Games — side by side with divider */}
-          <div className="flex items-center justify-center gap-0">
-            {slide.games.map((game, i) => (
-              <div key={i} className="flex items-center">
-                <GameCardView game={game} />
-                {i < slide.games.length - 1 && (
-                  <div className="h-20 w-px bg-white/10 mx-6" />
-                )}
-              </div>
-            ))}
-          </div>
-
-        </>
-      )}
-
-      {/* Diagnostic strip: per-league counts + current slide */}
+      {/* Diagnostic strip */}
       {!loading && slides.length > 0 && (
-        <div className="absolute bottom-4 left-4 text-white/40 text-xs tracking-widest tabular-nums flex gap-3">
+        <div
+          className="absolute bottom-4 left-4 text-white/50 text-xs tracking-widest tabular-nums flex gap-3"
+          style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
+        >
           <span>LMX:{leagueCounts.LMX}</span>
           <span>MLS:{leagueCounts.MLS}</span>
           <span>LAL:{leagueCounts.LAL}</span>
@@ -404,11 +450,16 @@ export default function SportsWidget() {
           <span>NBA:{leagueCounts.NBA}</span>
           <span>NFL:{leagueCounts.NFL}</span>
           <span>NHL:{leagueCounts.NHL}</span>
-          <span className="text-white/60">· {current + 1}/{slides.length}</span>
+          <span className="text-white/70">
+            · {current + 1}/{slides.length}
+          </span>
         </div>
       )}
 
-      <div className="absolute bottom-4 right-4 text-white/15 text-xs tracking-widest uppercase">
+      <div
+        className="absolute bottom-4 right-4 text-white/40 text-xs tracking-widest uppercase"
+        style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
+      >
         AdScreenPro
       </div>
     </div>
