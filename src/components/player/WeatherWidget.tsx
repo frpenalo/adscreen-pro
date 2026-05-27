@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { WeatherBackground } from "./WeatherBackground";
 
 const WMO: Record<number, { icon: string; label: string }> = {
   0:  { icon: "☀️", label: "Despejado" },
@@ -154,64 +155,101 @@ export default function WeatherWidget() {
   const message = weather ? getMessage(weather, seed) : null;
 
   return (
-    <div
-      className="fixed inset-0 flex flex-col items-center justify-center gap-8 px-16"
-      style={{ background: "linear-gradient(135deg, #0c4a6e 0%, #075985 100%)" }}
-    >
-      {!weather && !error && (
-        <div className="text-white/40 text-2xl tracking-widest animate-pulse uppercase">
-          Cargando...
-        </div>
-      )}
+    <div className="fixed inset-0 overflow-hidden">
+      {/* Background animado según código del clima (rayos sol, nubes,
+          lluvia, nieve, relámpagos, niebla). Reemplaza el gradient
+          azul plano anterior por algo que matchea el clima real. */}
+      <WeatherBackground code={weather?.currentCode} />
 
-      {error && (
-        <div className="text-white/40 text-2xl tracking-widest uppercase">
-          ☁️ Clima no disponible
-        </div>
-      )}
+      {/* Contenido principal centrado, en card glassmorphic */}
+      <div className="relative w-full h-full flex items-center justify-center px-16">
+        {!weather && !error && (
+          <div
+            className="text-white/80 text-2xl tracking-widest animate-pulse uppercase"
+            style={{ textShadow: "0 2px 12px rgba(0,0,0,0.8)" }}
+          >
+            Cargando...
+          </div>
+        )}
 
-      {weather && info && message && (
-        <>
-          {/* Today's weather — top, prominent */}
-          <div className="flex items-center gap-6">
-            <span style={{ fontSize: "6vw" }}>{info.icon}</span>
-            <span
-              className="text-white font-extralight tabular-nums"
-              style={{ fontSize: "7vw", lineHeight: 1 }}
-            >
-              {weather.currentTemp}°F
-            </span>
-            <div className="flex flex-col gap-1">
-              <span className="text-white/70 tracking-widest uppercase" style={{ fontSize: "1.6vw" }}>
-                {info.label}
+        {error && (
+          <div
+            className="text-white/80 text-2xl tracking-widest uppercase"
+            style={{ textShadow: "0 2px 12px rgba(0,0,0,0.8)" }}
+          >
+            ☁️ Clima no disponible
+          </div>
+        )}
+
+        {weather && info && message && (
+          <div
+            className="flex flex-col items-center gap-6 rounded-3xl"
+            style={{
+              background: "rgba(0, 0, 0, 0.55)",
+              backdropFilter: "blur(14px)",
+              WebkitBackdropFilter: "blur(14px)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              boxShadow:
+                "0 20px 60px rgba(0,0,0,0.6), 0 0 100px rgba(0,0,0,0.3)",
+              padding: "3vw 4vw",
+              maxWidth: "85vw",
+            }}
+          >
+            {/* Today's weather — top, prominent */}
+            <div className="flex items-center gap-6">
+              <span style={{ fontSize: "6vw" }}>{info.icon}</span>
+              <span
+                className="text-white font-extralight tabular-nums"
+                style={{ fontSize: "7vw", lineHeight: 1 }}
+              >
+                {weather.currentTemp}°F
               </span>
-              <span className="text-white/30 tracking-widest uppercase" style={{ fontSize: "1.2vw" }}>
-                Raleigh, NC
+              <div className="flex flex-col gap-1">
+                <span
+                  className="text-white/85 tracking-widest uppercase"
+                  style={{ fontSize: "1.6vw", fontWeight: 600 }}
+                >
+                  {info.label}
+                </span>
+                <span
+                  className="text-white/50 tracking-widest uppercase"
+                  style={{ fontSize: "1.2vw" }}
+                >
+                  Raleigh, NC
+                </span>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="w-24 border-t border-white/20" />
+
+            {/* Funny message about today */}
+            <p
+              className="text-white font-light leading-snug text-center max-w-4xl"
+              style={{ fontSize: "3.2vw" }}
+            >
+              {message}
+            </p>
+
+            {/* Tomorrow preview — small, at bottom */}
+            <div
+              className="flex items-center gap-2 text-white/50"
+              style={{ fontSize: "1.4vw" }}
+            >
+              <span>Mañana:</span>
+              <span>{WMO[weather.tomorrowCode]?.icon}</span>
+              <span>
+                {weather.tomorrowMinTemp}° – {weather.tomorrowMaxTemp}°F
               </span>
             </div>
           </div>
+        )}
+      </div>
 
-          {/* Divider */}
-          <div className="w-24 border-t border-white/20" />
-
-          {/* Funny message about today */}
-          <p
-            className="text-white font-light leading-snug text-center max-w-4xl"
-            style={{ fontSize: "3.2vw" }}
-          >
-            {message}
-          </p>
-
-          {/* Tomorrow preview — small, at bottom */}
-          <div className="flex items-center gap-2 text-white/25" style={{ fontSize: "1.4vw" }}>
-            <span>Mañana:</span>
-            <span>{WMO[weather.tomorrowCode]?.icon}</span>
-            <span>{weather.tomorrowMinTemp}° – {weather.tomorrowMaxTemp}°F</span>
-          </div>
-        </>
-      )}
-
-      <div className="absolute bottom-4 right-4 text-white/15 text-xs tracking-widest uppercase">
+      <div
+        className="absolute bottom-4 right-4 text-white/40 text-xs tracking-widest uppercase"
+        style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
+      >
         AdScreenPro
       </div>
     </div>
