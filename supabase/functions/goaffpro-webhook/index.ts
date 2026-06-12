@@ -37,7 +37,13 @@ Deno.serve(async (req) => {
         status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const incomingToken = req.headers.get("x-goaffpro-token");
+    // El token puede venir como header x-goaffpro-token O como query param
+    // ?token=. El plan actual de GoAffPro no incluye "Webhook signature
+    // secret" (paywalled) ni headers custom, así que el token va embebido
+    // en la URL del webhook que se configura en su dashboard.
+    const incomingToken =
+      req.headers.get("x-goaffpro-token") ??
+      new URL(req.url).searchParams.get("token");
     if (incomingToken !== webhookSecret) {
       console.error("Invalid GoAffPro webhook token");
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
