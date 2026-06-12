@@ -195,6 +195,10 @@ export default function CouponPage() {
                 <span className="text-sm font-medium">Cupón reclamado</span>
               </div>
 
+              <p className="text-slate-500 text-xs mt-3 bg-amber-50 border border-amber-200 rounded-xl py-2 px-3">
+                📸 Tómale un screenshot a esta pantalla para no perder tu código
+              </p>
+
               {expiry && (
                 <div className="flex items-center justify-center gap-1.5 text-slate-500 mt-2">
                   <Clock className="h-3.5 w-3.5" />
