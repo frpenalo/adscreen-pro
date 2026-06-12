@@ -6,6 +6,7 @@ import MyAdsScreen from "@/components/advertiser/MyAdsScreen";
 import SubscriptionScreen from "@/components/advertiser/SubscriptionScreen";
 import SupportScreen from "@/components/advertiser/SupportScreen";
 import CoverageMapScreen from "@/components/advertiser/CoverageMapScreen";
+import CouponsScreen from "@/components/advertiser/CouponsScreen";
 import ContractAcceptanceScreen from "@/components/ContractAcceptanceScreen";
 import { useContractAcceptance } from "@/hooks/useContractAcceptance";
 import { useAdvertiserProfile } from "@/hooks/useAdvertiserData";
@@ -35,6 +36,7 @@ const AdvertiserDashboard = () => {
       case "create": return <CreateAdScreen />;
       case "ads": return <MyAdsScreen />;
       case "coverage": return <CoverageMapScreen />;
+      case "coupons": return <CouponsScreen />;
       case "subscription": return <SubscriptionScreen />;
       case "support": return <SupportScreen />;
       default: return <HomeScreen />;

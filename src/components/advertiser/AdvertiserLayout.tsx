@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLang } from "@/contexts/LangContext";
 import { useAdvertiserProfile, useAdvertiserNotifications } from "@/hooks/useAdvertiserData";
-import { LogOut, Bell, Home, PlusCircle, Film, CreditCard, HelpCircle, Map, Menu, X, Globe } from "lucide-react";
+import { LogOut, Bell, Home, PlusCircle, Film, CreditCard, HelpCircle, Map, Menu, X, Globe, Ticket } from "lucide-react";
 import { Link } from "react-router-dom";
 import { NavLink } from "@/components/NavLink";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ const navItems = [
   { key: "home", icon: Home },
   { key: "create", icon: PlusCircle },
   { key: "ads", icon: Film },
+  { key: "coupons", icon: Ticket },
   { key: "coverage", icon: Map },
   { key: "subscription", icon: CreditCard },
   { key: "support", icon: HelpCircle },
@@ -48,6 +49,7 @@ const AdvertiserLayout = ({ children, currentPage, onPageChange }: AdvertiserLay
     home: t.advertiserDashboard.home,
     create: t.advertiserDashboard.createAd,
     ads: t.advertiserDashboard.myAds,
+    coupons: "Cupones",
     coverage: "Cobertura",
     subscription: t.advertiserDashboard.subscription,
     support: t.advertiserDashboard.support,

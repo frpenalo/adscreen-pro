@@ -20,6 +20,7 @@ import NotFound from "./pages/NotFound";
 import AdRedirect from "./pages/AdRedirect";
 import ResetPassword from "./pages/ResetPassword";
 import SelfiePage from "./pages/SelfiePage";
+import CouponPage from "./pages/CouponPage";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ const App = () => (
               <Route path="/player/:screenId" element={<PlayerPage />} />
               <Route path="/r/:adId/:screenId" element={<AdRedirect />} />
               <Route path="/selfie/:screenId" element={<SelfiePage />} />
+              <Route path="/coupon/:couponId" element={<CouponPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
