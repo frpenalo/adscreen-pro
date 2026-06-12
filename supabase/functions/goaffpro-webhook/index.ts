@@ -25,17 +25,24 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const webhookSecret = Deno.env.get("GOAFFPRO_WEBHOOK_SECRET"); // optional validation
+    const webhookSecret = Deno.env.get("GOAFFPRO_WEBHOOK_SECRET");
 
-    // Optional: verify GoAffPro webhook token
-    if (webhookSecret) {
-      const incomingToken = req.headers.get("x-goaffpro-token");
-      if (incomingToken !== webhookSecret) {
-        console.error("Invalid GoAffPro webhook token");
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    // El secret es OBLIGATORIO. Antes era opcional ("if (webhookSecret)"),
+    // lo que significaba que si el env var faltaba, el webhook aceptaba
+    // cualquier POST — un atacante podía insertar comisiones falsas para
+    // cualquier partner. Fail-closed: sin secret configurado, no se procesa.
+    if (!webhookSecret) {
+      console.error("GOAFFPRO_WEBHOOK_SECRET not configured — rejecting request");
+      return new Response(JSON.stringify({ error: "Webhook not configured" }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const incomingToken = req.headers.get("x-goaffpro-token");
+    if (incomingToken !== webhookSecret) {
+      console.error("Invalid GoAffPro webhook token");
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const payload = await req.json();

@@ -70,6 +70,18 @@ if (!partnerId || !referralUrl) {
   process.exit(1);
 }
 
+// Validar inputs — vienen de workflow_dispatch y partnerId termina en filtros
+// de DELETE contra la DB con service role.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+if (!UUID_RE.test(partnerId)) {
+  console.error(`Invalid partner_id (must be UUID): ${partnerId}`);
+  process.exit(1);
+}
+if (!/^https:\/\//.test(referralUrl)) {
+  console.error(`Invalid referral_url (must be https): ${referralUrl}`);
+  process.exit(1);
+}
+
 // ── Supabase REST helpers (sin supabase-js para evitar validación JWT) ────────
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -99,11 +111,17 @@ async function uploadToStorage(bucket, storagePath, buffer, contentType) {
 }
 
 async function dbDelete(table, filters) {
-  const params = Object.entries(filters).map(([k, v]) => `${k}=eq.${v}`).join("&");
-  await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
+  // URLSearchParams encodea los valores — evita inyección de filtros PostgREST.
+  const params = new URLSearchParams(
+    Object.entries(filters).map(([k, v]) => [k, `eq.${v}`]),
+  );
+  const res = await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
     method: "DELETE",
     headers: { ...authHeaders, "Content-Type": "application/json", "Prefer": "return=minimal" },
   });
+  if (!res.ok) {
+    throw new Error(`DB delete failed (${res.status}) on ${table}`);
+  }
 }
 
 async function dbInsert(table, row) {

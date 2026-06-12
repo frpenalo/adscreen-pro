@@ -60,6 +60,18 @@ if (!adId || !photoUrl || !businessName) {
   process.exit(1);
 }
 
+// Validar inputs — vienen de workflow_dispatch y adId termina en filtros
+// de PATCH contra la DB con service role.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+if (!UUID_RE.test(adId)) {
+  console.error(`Invalid ad_id (must be UUID): ${adId}`);
+  process.exit(1);
+}
+if (!/^https:\/\//.test(photoUrl)) {
+  console.error(`Invalid photo_url (must be https): ${photoUrl}`);
+  process.exit(1);
+}
+
 // ── Category → AdStyle mapping ────────────────────────────────────────────────
 function categoryToAdStyle(cat) {
   const c = (cat || "").toLowerCase().trim();
@@ -102,7 +114,10 @@ async function uploadToStorage(bucket, storagePath, buffer, contentType) {
 }
 
 async function dbPatch(table, filters, data) {
-  const params = Object.entries(filters).map(([k, v]) => `${k}=eq.${v}`).join("&");
+  // URLSearchParams encodea los valores — evita inyección de filtros PostgREST.
+  const params = new URLSearchParams(
+    Object.entries(filters).map(([k, v]) => [k, `eq.${v}`]),
+  );
   const res = await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
     method: "PATCH",
     headers: { ...authHeaders, "Content-Type": "application/json", "Prefer": "return=minimal" },

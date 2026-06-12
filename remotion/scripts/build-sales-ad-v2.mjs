@@ -70,6 +70,24 @@ if (!screenId || !businessName || !advertiserSignupUrl) {
   process.exit(1);
 }
 
+// Validar inputs — vienen de workflow_dispatch (cualquiera con acceso al
+// repo puede dispararlo) y screenId termina en filtros de DELETE contra la
+// DB con service role. Sin esto, un valor manipulado podría alterar la
+// semántica del filtro PostgREST.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+if (!UUID_RE.test(screenId)) {
+  console.error(`❌ screenId inválido (debe ser UUID): ${screenId}`);
+  process.exit(1);
+}
+if (!/^https:\/\//.test(advertiserSignupUrl)) {
+  console.error(`❌ advertiserSignupUrl debe ser https: ${advertiserSignupUrl}`);
+  process.exit(1);
+}
+if (businessName.length > 100) {
+  console.error("❌ businessName demasiado largo (máx 100 chars)");
+  process.exit(1);
+}
+
 // ── Supabase REST helpers ────────────────────────────────────────────────────
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -97,10 +115,12 @@ async function uploadToStorage(bucket, storagePath, buffer, contentType) {
 }
 
 async function dbDelete(table, filters) {
-  const params = Object.entries(filters)
-    .map(([k, v]) => `${k}=eq.${v}`)
-    .join("&");
-  await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
+  // URLSearchParams encodea los valores — evita que un filtro con &/= rompa
+  // o inyecte condiciones extra en la query de PostgREST.
+  const params = new URLSearchParams(
+    Object.entries(filters).map(([k, v]) => [k, `eq.${v}`]),
+  );
+  const res = await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
     method: "DELETE",
     headers: {
       ...authHeaders,
@@ -108,6 +128,9 @@ async function dbDelete(table, filters) {
       Prefer: "return=minimal",
     },
   });
+  if (!res.ok) {
+    throw new Error(`DB delete failed (${res.status}) on ${table}`);
+  }
 }
 
 async function dbInsert(table, row) {

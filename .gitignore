@@ -28,6 +28,10 @@ dist-ssr
 .env.*
 !.env.example
 
+# Supabase CLI cache — contiene pooler-url y project-ref (metadata de
+# infraestructura que no debe versionarse)
+supabase/.temp/
+
 # Remotion renders output
 remotion/out/
 

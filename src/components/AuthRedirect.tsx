@@ -20,15 +20,19 @@ const AuthRedirect = () => {
     const meta = user.user_metadata;
     const createRecord = async () => {
       if (role === "advertiser" && meta?.customer_name) {
-        // Look up partner by ref_code if present
+        // Look up partner by ref_code if present. Uses the RPC
+        // lookup_partner_by_ref_code (SECURITY DEFINER, exact-match only)
+        // instead of selecting from partner_qr_codes directly — the open
+        // SELECT policy that allowed that was removed because it let any
+        // authenticated user enumerate every partner's referral code.
+        // (Cast to any: the generated DB types don't include this RPC yet.)
         let referredPartnerId: string | null = null;
         if (meta?.ref_code) {
-          const { data: qr } = await supabase
-            .from("partner_qr_codes")
-            .select("partner_id")
-            .eq("code", meta.ref_code)
-            .maybeSingle();
-          if (qr) referredPartnerId = qr.partner_id;
+          const { data: pid } = await (supabase.rpc as any)(
+            "lookup_partner_by_ref_code",
+            { p_code: meta.ref_code },
+          );
+          if (pid) referredPartnerId = pid as string;
         }
 
         await supabase.from("advertisers").upsert({
