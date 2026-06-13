@@ -15,9 +15,10 @@
  * Mismo pipeline que el SalesAd v3. Audio SILENTE (las TVs van en mudo; el
  * audio del clip de Omni se descarta).
  *
- * El clip de Omni es 1280x720 @ 24fps; el output es 1920x1080 @ 30fps. Se
- * congela el último frame del Omni HOLD_SECONDS para que la transformación
- * final (superhéroe) respire antes del outro.
+ * El clip de Omni es 1280x720 @ 24fps; el output es 1920x1080 @ 30fps. SIN
+ * hold — el teaser es dinámico y no tiene texto que leer al final, así que
+ * corta directo del clip al outro (a diferencia del SalesAd v3, que sí
+ * congela el último frame para dar tiempo de leer su tarjeta de texto).
  *
  * A diferencia del SalesAd: el teaser NO es una row de la tabla `ads` — el
  * player lo inyecta sintéticamente buscando el archivo en
@@ -31,7 +32,7 @@
  * Env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *
  * Output: ad-media/partner-teasers/{screenId}.mp4
- *   - 1920x1080 @ 30fps, ~18s (10s Omni + 2s hold + 6s outro)
+ *   - 1920x1080 @ 30fps, ~16s (10s Omni + 6s outro)
  *   - H.264 Constrained Baseline + yuv420p + sin B-frames + BT.709 + faststart
  */
 
@@ -53,10 +54,6 @@ const TMP = os.tmpdir();
 
 const OMNI_CLIP_FILENAME = "TeaserV2.mp4";
 const OMNI_CLIP_PATH = path.join(PUBLIC, OMNI_CLIP_FILENAME);
-
-// Segundos que se congela el último frame del clip de Omni (la pose final
-// del superhéroe) antes del outro.
-const HOLD_SECONDS = 2;
 
 // ── Args ─────────────────────────────────────────────────────────────────────
 const [screenId, selfieUrl] = process.argv.slice(2);
@@ -178,8 +175,9 @@ async function main() {
 
   // ── 4. Concat clip Omni RAW + outro + re-encode Android-safe ────────────
   // El clip de Omni NO se toca con overlay; solo se normaliza (scale a 1080p,
-  // fps 30, sar 1), se congela su último frame HOLD_SECONDS (tpad) y se
-  // concatena con el outro. Una sola re-encode.
+  // fps 30, sar 1) y se concatena con el outro. Una sola re-encode. SIN hold
+  // — corte directo del clip al outro (el teaser es dinámico, sin texto que
+  // leer al final).
   //
   // Audio: track silente (aevalsrc) mapeado con -shortest. Idéntico al v3;
   // el audio del clip de Omni se descarta (las TVs de barbería van en mudo).
@@ -193,7 +191,7 @@ async function main() {
       "-f", "lavfi",
       "-i", "aevalsrc=0:channel_layout=stereo:sample_rate=48000", // 2: silencio
       "-filter_complex",
-      `[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,tpad=stop_mode=clone:stop_duration=${HOLD_SECONDS}[v0];` +
+      "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v0];" +
         "[1:v]scale=1920:1080,setsar=1,fps=30[v1];" +
         "[v0][v1]concat=n=2:v=1:a=0[v]",
       "-map", "[v]",
