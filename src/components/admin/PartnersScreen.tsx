@@ -153,10 +153,13 @@ const PartnersScreen = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editPartner?.id]);
 
+  // Re-render por partner: misma edge function que "renderizar todos"
+  // (render-all), pasando un partner_id para acotar a ese solo. Dispara los
+  // workflows nuevos (teaser-v2 + sales-ad-v3) con el ref code real.
   const handleRerender = async (partnerId: string) => {
     setRerendering(partnerId);
     try {
-      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/trigger-render`;
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/render-all`;
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
       const res = await fetch(fnUrl, {
@@ -166,7 +169,7 @@ const PartnersScreen = () => {
           "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ partner_id: partnerId }),
+        body: JSON.stringify({ partner_id: partnerId, teaser: true, salesAd: true }),
       });
       if (res.ok) toast.success("Re-render iniciado (~2 min)");
       else toast.error("Error al iniciar re-render");
@@ -310,9 +313,10 @@ const PartnersScreen = () => {
         toast.warning(`Código de referido falló: ${e?.message ?? "error desconocido"}`);
       }
 
-      // 3. Disparar render de video personalizado con QR del partner
+      // 3. Disparar render de los videos v2 (teaser + SalesAd) del partner
+      //    via render-all acotado a este partner.
       try {
-        const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/trigger-render`;
+        const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/render-all`;
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData.session?.access_token;
         const renderRes = await fetch(fnUrl, {
@@ -322,10 +326,10 @@ const PartnersScreen = () => {
             "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ partner_id: id }),
+          body: JSON.stringify({ partner_id: id, teaser: true, salesAd: true }),
         });
         if (renderRes.ok) {
-          toast.info("Video personalizado en proceso (~2 min)");
+          toast.info("Videos personalizados en proceso (~2 min)");
         }
       } catch {
         // non-critical — render failure doesn't block approval

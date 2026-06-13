@@ -97,11 +97,14 @@ Deno.serve(async (req) => {
     const doTeaser = body.teaser !== false;
     const doSalesAd = body.salesAd !== false;
     const dryRun = body.dryRun === true;
+    // partner_id opcional: si viene, dispara SOLO ese partner (botón refresh
+    // por partner); si no, dispara todos (botón "renderizar todos").
+    const onlyPartnerId = body.partner_id ?? null;
 
     // ── Partners + sus ref codes ───────────────────────────────────────────
-    const { data: partners, error: partnersErr } = await supabase
-      .from("partners")
-      .select("id, business_name");
+    let partnersQuery = supabase.from("partners").select("id, business_name");
+    if (onlyPartnerId) partnersQuery = partnersQuery.eq("id", onlyPartnerId);
+    const { data: partners, error: partnersErr } = await partnersQuery;
     if (partnersErr) throw new Error(partnersErr.message);
 
     const { data: codes } = await supabase

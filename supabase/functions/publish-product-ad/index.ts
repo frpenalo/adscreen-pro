@@ -10,10 +10,10 @@
  * 3. Inserta 1 ad por partner aprobado con su QR de afiliado GoAffPro
  * 4. Actualiza products.published_count
  *
- * El QR apunta a https://adscreenpro.com/r/{ad_id}/{partner_id} para que
- * cada escaneo quede registrado en ad_clicks antes de redirigir a
- * regalove.co/products/{handle}?ref={partner_ref_code}, donde GoAffPro
- * acredita la compra al partner dueño de la pantalla.
+ * El QR encoda directamente https://regalove.co/products/{handle}?ref={partner_ref_code}
+ * de modo que el preview de la cámara muestra el destino real y el escaneo
+ * va directo a la página del producto. GoAffPro acredita la compra al
+ * partner dueño de la pantalla vía el parámetro `ref`.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -40,6 +40,9 @@ interface Product {
   shopify_handle: string;
   media_url: string;
   media_type: "image" | "video";
+  qr_x: number;
+  qr_y: number;
+  qr_size_pct: number;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -141,7 +144,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // 1. Load product
   const { data: product, error: productError } = await adminClient
     .from("products")
-    .select("id, title, price, shopify_handle, media_url, media_type")
+    .select("id, title, price, shopify_handle, media_url, media_type, qr_x, qr_y, qr_size_pct")
     .eq("id", product_id)
     .single<Product>();
 
@@ -178,24 +181,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ success: true, published_to: 0 });
   }
 
-  // 4. Build one ad per partner with their individual affiliate QR
-  //    We pre-generate the ad id so the QR can point to our trackable
-  //    redirect route /r/:adId/:screenId which logs ad_clicks before
-  //    forwarding to GoAffPro-tagged Regalove URL.
+  // 4. Build one ad per partner. The QR encodes the direct GoAffPro-tagged
+  //    Regalove product URL so the phone's camera preview shows the real
+  //    destination and the scan goes straight to the product page. GoAffPro
+  //    credits the partner owning the screen via the `ref` query param.
   const adRows = (partners as Partner[]).flatMap((partner) => {
     const refCode = extractRefCode(partner.goaffpro_referral_link);
     if (!refCode) return [];
 
-    const adId = crypto.randomUUID();
-    const trackableUrl = `https://adscreenpro.com/r/${adId}/${partner.id}`;
+    const affiliateUrl = `https://regalove.co/products/${product.shopify_handle}?ref=${refCode}`;
 
     return [{
-      id: adId,
       advertiser_id: null,
       type: product.media_type, // 'image' or 'video'
       status: "published",
       final_media_path: product.media_url,
-      qr_url: trackableUrl,
+      qr_url: affiliateUrl,
       screen_id: partner.id,
       metadata: {
         product_id: product.id,
@@ -203,6 +204,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         title: product.title,
         price: String(product.price),
         ref_code: refCode,
+        qr_x: product.qr_x,
+        qr_y: product.qr_y,
+        qr_size_pct: product.qr_size_pct,
       },
     }];
   });
