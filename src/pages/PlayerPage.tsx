@@ -65,8 +65,9 @@ const IMAGE_DURATION = 10000;
 const DEFAULT_WIDGET_FREQUENCY = 3;
 
 // ── "Awakening" teaser ────────────────────────────────────────────────────────
-// Cinematic ~21s teaser (A+B+C+D, ver remotion/scripts/build-awakening-teaser.mjs).
-// Es PER-PARTNER porque el Segmento D contiene un QR REAL apuntando a la URL
+// Cinematic ~18s teaser (clip de Gemini Omni + TeaserOutro español, ver
+// remotion/scripts/build-teaser-v2.mjs). Reemplazó al viejo Kling A+B+C+D.
+// Es PER-PARTNER porque el outro contiene un QR REAL apuntando a la URL
 // del selfie del partner (/selfie/:screenId). Cada partner se renderiza por
 // separado vía el script y se sube a:
 //   ad-media/partner-teasers/{screenId}.mp4
@@ -97,7 +98,7 @@ const TEASER_EVERY_N_SLOTS = 12;
 // Duración aproximada del teaser en segundos. Usada como fallback cuando el
 // videoElement no logra cargar metadata a tiempo (Fully Kiosk a veces tarda).
 // El timer real arma con v.duration + 2s si llega; este valor solo entra si
-// metadata nunca llega. 24s > 21s del teaser real (con margen de seguridad).
+// metadata nunca llega. 24s > 18s del teaser real (con margen de seguridad).
 const TEASER_FALLBACK_DURATION_S = 24;
 
 // Cache key is per-screen to prevent bleed-over between partner TVs
@@ -702,8 +703,9 @@ export default function PlayerPage() {
 
       // Safety-net: force-advance if onEnded never fires (Fully Kiosk /
       // Android WebView / Smart TV browser quirk). Use the video's own
-      // duration + 2s buffer when available; otherwise 15s fallback for
-      // normal ads, 20s fallback for the awakening teaser (18s long).
+      // duration + 2s buffer when available; otherwise 13s fallback for
+      // normal ads, 24s fallback (TEASER_FALLBACK_DURATION_S) for the
+      // awakening teaser (~18s long).
       clearVideoTimer();
       const fallbackDur = ad.kind === "teaser" ? TEASER_FALLBACK_DURATION_S : 13;
       const armTimer = () => {
