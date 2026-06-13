@@ -71,6 +71,15 @@ const SELFIE_EVERY_N_ADS = 10;
 const MAX_SELFIE_SHOWS = 2;
 const SELFIE_SHOWS_KEY = "adscreenpro-selfie-shows";
 
+// El cap es POR CLIENTE, no por imagen: un cliente puede tomarse hasta 3
+// selfies (rate-limit por fingerprint), y si contáramos por id cada una
+// saldría 2 veces → el cliente saldría hasta 6. Contamos por el fingerprint
+// (metadata.fp) que identifica al cliente; así sale máx 2 veces en total
+// sin importar cuántas selfies se tome. Fallback al id si no hay fp.
+function selfieIdentity(ad: { id: string; metadata?: any }): string {
+  return ad.metadata?.fp ?? ad.id;
+}
+
 function getSelfieShows(): Record<string, number> {
   try {
     return JSON.parse(localStorage.getItem(SELFIE_SHOWS_KEY) || "{}");
@@ -644,7 +653,7 @@ export default function PlayerPage() {
       // fetchAds excluye los selfies con show count >= MAX_SELFIE_SHOWS, así
       // no vuelve a aparecer (el cliente ya fue avisado: "2 veces en la
       // próxima hora").
-      if (cur.kind === "selfie" && bumpSelfieShows(cur.id) >= MAX_SELFIE_SHOWS) {
+      if (cur.kind === "selfie" && bumpSelfieShows(selfieIdentity(cur)) >= MAX_SELFIE_SHOWS) {
         setTimeout(() => fetchAdsRef.current?.(), 0);
       }
     }
@@ -963,12 +972,13 @@ export default function PlayerPage() {
         customer_title: row.customer_title ?? null,
       }));
 
-      // Capar apariciones: descartar los selfies que ya alcanzaron
-      // MAX_SELFIE_SHOWS y purgar del contador los que ya no están activos.
-      pruneSelfieShows(new Set(selfieList.map((s) => s.id)));
+      // Capar apariciones POR CLIENTE (fingerprint): descartar los selfies
+      // de clientes que ya alcanzaron MAX_SELFIE_SHOWS y purgar del contador
+      // las identidades que ya no están activas.
+      pruneSelfieShows(new Set(selfieList.map(selfieIdentity)));
       const selfieShows = getSelfieShows();
       const eligibleSelfies = selfieList.filter(
-        (s) => (selfieShows[s.id] || 0) < MAX_SELFIE_SHOWS,
+        (s) => (selfieShows[selfieIdentity(s)] || 0) < MAX_SELFIE_SHOWS,
       );
 
       // Shuffle the selfie pool so each refetch gives a different
