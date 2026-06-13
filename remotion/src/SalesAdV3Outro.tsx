@@ -281,17 +281,17 @@ export const SalesAdV3Outro: React.FC<SalesAdV3OutroProps> = ({
         </div>
 
         {/* Footer: CTA + partner name */}
-        <div style={{ opacity: footerProgress, textAlign: "center", marginTop: 4 }}>
+        <div style={{ opacity: footerProgress, textAlign: "center", marginTop: 8 }}>
           <div
             style={{
               fontFamily: "system-ui, -apple-system, sans-serif",
-              fontSize: 22,
-              fontWeight: 700,
-              letterSpacing: "0.2em",
-              color: "rgba(255,255,255,0.9)",
-              textShadow: "0 2px 8px rgba(0,0,0,0.9)",
+              fontSize: 46,
+              fontWeight: 800,
+              letterSpacing: "0.16em",
+              color: "#fff",
+              textShadow: `0 2px 14px rgba(0,0,0,0.9), 0 0 28px ${AMBER}88`,
               textTransform: "uppercase",
-              marginBottom: 6,
+              marginBottom: 10,
             }}
           >
             Escanea con tu teléfono
@@ -299,7 +299,7 @@ export const SalesAdV3Outro: React.FC<SalesAdV3OutroProps> = ({
           <div
             style={{
               fontFamily: "system-ui, -apple-system, sans-serif",
-              fontSize: 26,
+              fontSize: 28,
               fontWeight: 700,
               letterSpacing: "0.15em",
               color: AMBER,
