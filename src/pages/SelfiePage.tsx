@@ -511,7 +511,7 @@ export default function SelfiePage() {
         </div>
         <h2 className="text-3xl font-bold mb-2 text-center">Generando tu momento</h2>
         <p className="text-center text-white/70 max-w-sm mb-6">
-          Pronto vas a aparecer en la pantalla de <strong>{businessName}</strong>.<br />
+          Saldrás <strong>2 veces</strong> en la pantalla de <strong>{businessName}</strong> en la próxima hora.<br />
           Después podrás descargarlo y compartirlo.
         </p>
         <div className="w-48 h-1 rounded-full bg-white/10 overflow-hidden mb-8">
@@ -562,6 +562,9 @@ export default function SelfiePage() {
             <h1 className="text-2xl font-bold">¡Ya estás en la TV!</h1>
             <p className="text-sm text-white/60 mt-1">
               Tu momento en <strong>{result.business_name ?? businessName}</strong>
+            </p>
+            <p className="text-sm text-fuchsia-300/90 mt-1">
+              Sales <strong>2 veces</strong> en la pantalla durante la próxima hora 👀
             </p>
           </div>
 
@@ -661,7 +664,7 @@ export default function SelfiePage() {
         <h2 className="text-3xl font-bold mb-2 text-center">¡Listo!</h2>
         <p className="text-center text-white/70 mb-1">Mira la TV</p>
         <p className="text-center text-sm text-white/50 mb-8 max-w-xs">
-          Aparecerás en {businessName} en los próximos minutos. Caduca en 1 hora.
+          Saldrás <strong>2 veces</strong> en la pantalla de {businessName} durante la próxima hora.
         </p>
         <button
           onClick={() => {

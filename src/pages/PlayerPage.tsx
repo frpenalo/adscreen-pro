@@ -60,6 +60,53 @@ const WIDGETS: WidgetType[] = [
 // extra ones wait for the next refetch (postgres_changes triggers
 // re-shuffle so unseen ones get their turn).
 const SELFIE_EVERY_N_ADS = 10;
+
+// ── Límite de apariciones por selfie ─────────────────────────────────────────
+// Un selfie expira a los 60 min (ver transform-selfie), pero durante esa hora
+// la rotación lo mostraría decenas de veces — cuando el cliente ya se fue, no
+// tiene sentido. Lo capamos a MAX_SELFIE_SHOWS apariciones. El conteo vive en
+// localStorage (sobrevive el auto-reload del player cada 3h) y se purga de los
+// selfies que ya expiraron para no crecer. Al cliente se le promete en
+// SelfiePage que sale "2 veces en la próxima hora".
+const MAX_SELFIE_SHOWS = 2;
+const SELFIE_SHOWS_KEY = "adscreenpro-selfie-shows";
+
+function getSelfieShows(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(SELFIE_SHOWS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+function bumpSelfieShows(id: string): number {
+  const shows = getSelfieShows();
+  shows[id] = (shows[id] || 0) + 1;
+  try {
+    localStorage.setItem(SELFIE_SHOWS_KEY, JSON.stringify(shows));
+  } catch {
+    /* ignore */
+  }
+  return shows[id];
+}
+// Elimina del contador los selfies que ya no están activos (expirados), para
+// que localStorage no crezca indefinidamente.
+function pruneSelfieShows(activeIds: Set<string>) {
+  const shows = getSelfieShows();
+  let changed = false;
+  for (const id of Object.keys(shows)) {
+    if (!activeIds.has(id)) {
+      delete shows[id];
+      changed = true;
+    }
+  }
+  if (changed) {
+    try {
+      localStorage.setItem(SELFIE_SHOWS_KEY, JSON.stringify(shows));
+    } catch {
+      /* ignore */
+    }
+  }
+}
 const WIDGET_DURATION = 10000;
 const IMAGE_DURATION = 10000;
 const DEFAULT_WIDGET_FREQUENCY = 3;
@@ -589,7 +636,18 @@ export default function PlayerPage() {
   }, []);
 
   const next = useCallback(() => {
-    if (ads[current]) logImpression(ads[current]);
+    const cur = ads[current];
+    if (cur) {
+      logImpression(cur);
+      // Capar apariciones de selfies: contar este show y, si alcanzó el
+      // límite, reconstruir la rotación en el próximo tick — el filtro de
+      // fetchAds excluye los selfies con show count >= MAX_SELFIE_SHOWS, así
+      // no vuelve a aparecer (el cliente ya fue avisado: "2 veces en la
+      // próxima hora").
+      if (cur.kind === "selfie" && bumpSelfieShows(cur.id) >= MAX_SELFIE_SHOWS) {
+        setTimeout(() => fetchAdsRef.current?.(), 0);
+      }
+    }
     const nextIdx = (current + 1) % Math.max(ads.length, 1);
 
     // ── Cleanup AGRESIVO del video actual ANTES de avanzar ──
@@ -905,11 +963,19 @@ export default function PlayerPage() {
         customer_title: row.customer_title ?? null,
       }));
 
+      // Capar apariciones: descartar los selfies que ya alcanzaron
+      // MAX_SELFIE_SHOWS y purgar del contador los que ya no están activos.
+      pruneSelfieShows(new Set(selfieList.map((s) => s.id)));
+      const selfieShows = getSelfieShows();
+      const eligibleSelfies = selfieList.filter(
+        (s) => (selfieShows[s.id] || 0) < MAX_SELFIE_SHOWS,
+      );
+
       // Shuffle the selfie pool so each refetch gives a different
       // order — when there are more active selfies than slots in a
       // rotation, the unseen ones get their turn in the next cycle.
       // Fisher-Yates.
-      const shuffledSelfies = [...selfieList];
+      const shuffledSelfies = [...eligibleSelfies];
       for (let i = shuffledSelfies.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffledSelfies[i], shuffledSelfies[j]] = [shuffledSelfies[j], shuffledSelfies[i]];
