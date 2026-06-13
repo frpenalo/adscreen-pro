@@ -76,9 +76,9 @@ const pickTitle = (style: string): string => {
 // Rate-limit thresholds. Tuned conservatively: 3 selfies per device
 // per day is enough for legitimate "I'll try a different style"
 // behavior, but blocks the screenshot-farming attack the user flagged.
-const LIMIT_PER_FP_24H = 3;
+const LIMIT_PER_FP_24H = 2;   // máx 2 selfies por cliente/día (costo de IA)
 const LIMIT_PER_IP_24H = 5;
-const MAX_ACTIVE_PER_SCREEN = 8;
+const MAX_ACTIVE_PER_SCREEN = 4;  // máx 4 activos a la vez (no saturar anuncios)
 // Selfies expire 60 minutes after creation — covers a typical
 // barbershop visit (30-60 min) with a small buffer. Originally 8h,
 // but that left selfies on the TV long after the customer had gone
