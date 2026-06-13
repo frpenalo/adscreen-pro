@@ -26,6 +26,7 @@ const PartnersScreen = () => {
   // breaks the 60m selfie geofence — manual pin fixes it once.
   const [editPartner, setEditPartner] = useState<{ id: string; address: string; lat: number | null; lng: number | null } | null>(null);
   const [rerendering, setRerendering] = useState<string | null>(null); // partner id being re-rendered
+  const [renderingAll, setRenderingAll] = useState(false); // despliegue masivo v2 en curso
   const [geocodingAddress, setGeocodingAddress] = useState(false);
   // Tracks whether the admin dragged the marker manually. If so, we
   // persist those coords as-is on save instead of re-geocoding from
@@ -173,6 +174,50 @@ const PartnersScreen = () => {
       toast.error("Error al conectar con el servidor");
     } finally {
       setRerendering(null);
+    }
+  };
+
+  // Despliegue masivo: dispara teaser v2 + SalesAd v3 para TODOS los partners.
+  // Llama a la edge function render-all (admin-only), que lee el ref code real
+  // de cada partner y dispara los workflows nuevos de GitHub Actions.
+  const handleRenderAll = async () => {
+    if (
+      !window.confirm(
+        "¿Renderizar el teaser v2 + SalesAd v3 para TODOS los partners?\n\n" +
+          "Esto dispara los workflows de GitHub Actions (2 por partner). " +
+          "Los videos estarán listos en unos minutos.",
+      )
+    )
+      return;
+    setRenderingAll(true);
+    try {
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/render-all`;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      const res = await fetch(fnUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ teaser: true, salesAd: true }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const fails = data.failed?.length ?? 0;
+        toast.success(
+          `Renders disparados: ${data.triggered} para ${data.total} partners` +
+            (fails > 0 ? ` · ${fails} fallaron` : ""),
+        );
+        if (fails > 0) console.warn("render-all fallos:", data.failed);
+      } else {
+        toast.error(`Error: ${data.error ?? res.status}`);
+      }
+    } catch {
+      toast.error("Error al conectar con el servidor");
+    } finally {
+      setRenderingAll(false);
     }
   };
 
@@ -326,6 +371,15 @@ const PartnersScreen = () => {
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <button
+          onClick={handleRenderAll}
+          disabled={renderingAll}
+          className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+        >
+          {renderingAll ? "Disparando renders…" : "🎬 Renderizar todos (v2)"}
+        </button>
+      </div>
       <div className="rounded-lg border border-border bg-card">
         <Table>
           <TableHeader>
