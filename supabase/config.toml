@@ -29,3 +29,9 @@ verify_jwt = false
 
 [functions.get-shopify-products]
 verify_jwt = false
+
+[functions.claim-coupon]
+verify_jwt = false
+
+[functions.send-monthly-reports]
+verify_jwt = false
