@@ -16,12 +16,14 @@
  *
  * El clip de Omni es 1280x720 @ 24fps; el output final es 1920x1080 @ 30fps
  * (se escala el Omni y se normaliza el fps en el concat, una sola re-encode).
- * Audio: se preserva el del clip de Omni + silencio para el tramo del outro.
+ * Audio: track AAC SILENTE para todo el video (mismo patrón que el teaser y
+ * el v2 — las TVs de barbería nunca reproducen audio). El audio del clip de
+ * Omni se descarta.
  *
  * HOLD: el clip de Omni termina justo cuando aparece su tarjeta de texto
  * ("TU ANUNCIO PUEDE APARECER EN ESTA PANTALLA..."), sin dar tiempo a leerla
  * antes del outro. Se congela el último frame del Omni HOLD_SECONDS extra
- * (tpad clona el frame, apad iguala el audio con silencio) para que se lea.
+ * (tpad clona el frame — solo video, no toca el audio) para que se lea.
  *
  * Usage:
  *   node scripts/build-sales-ad-v3.mjs \
@@ -210,33 +212,31 @@ async function main() {
 
   // ── 4. Concat clip Omni RAW + outro + re-encode Android-safe ────────────
   // El clip de Omni NO se toca con overlay; solo se normaliza (scale a 1080p,
-  // fps 30, sar 1) y se concatena con el outro. Una sola re-encode. Mismo
-  // pipeline que el teaser/v2 que corren fluidos en el Onn stick.
+  // fps 30, sar 1), se congela su último frame HOLD_SECONDS (tpad) y se
+  // concatena con el outro. Una sola re-encode. Mismo pipeline que el
+  // teaser/v2 que corren fluidos en el Onn stick.
   //
-  // Audio: el clip de Omni trae ambiente (input 0). El outro no tiene audio,
-  // así que se le genera silencio (input 2) y se concatena el audio también.
+  // Audio: track silente (aevalsrc) mapeado a todo el output, recortado a la
+  // duración del video con -shortest. Idéntico al v2/teaser; el audio del
+  // clip de Omni se descarta (las TVs de barbería van en mudo).
   console.log("\n🔧 Concat clip Omni + outro + re-encode Android-safe...");
   const finalPath = path.join(OUT, `sales-ad-v3-${screenId}.mp4`);
   await runFfmpeg(
     [
       "-y",
-      "-i", OMNI_CLIP_PATH,   // 0: video + audio ambiente
-      "-i", outroRawPath,     // 1: video (sin audio)
+      "-i", OMNI_CLIP_PATH,   // 0: video (su audio se descarta)
+      "-i", outroRawPath,     // 1: video
       "-f", "lavfi",
-      "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", // 2: silencio para el outro
+      "-i", "aevalsrc=0:channel_layout=stereo:sample_rate=48000", // 2: silencio
       "-filter_complex",
-      // Normalizar ambos videos al mismo formato antes de concatenar.
+      // Normalizar ambos videos al mismo formato y concatenar (solo video).
       // tpad congela el último frame del Omni HOLD_SECONDS extra (tiempo de
-      // lectura de su tarjeta de texto). apad iguala el audio con silencio.
+      // lectura de su tarjeta de texto).
       `[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,tpad=stop_mode=clone:stop_duration=${HOLD_SECONDS}[v0];` +
         "[1:v]scale=1920:1080,setsar=1,fps=30[v1];" +
-        // Audio: del Omni (0:a) + silencio del hold; silencio (2:a) recortado
-        // a 6s (la duración del outro) para el tramo del outro.
-        "[2:a]atrim=duration=6,asetpts=PTS-STARTPTS[sil];" +
-        `[0:a]asetpts=PTS-STARTPTS,apad=pad_dur=${HOLD_SECONDS}[a0];` +
-        "[v0][a0][v1][sil]concat=n=2:v=1:a=1[v][a]",
+        "[v0][v1]concat=n=2:v=1:a=0[v]",
       "-map", "[v]",
-      "-map", "[a]",
+      "-map", "2:a",
       "-c:v", "libx264",
       "-profile:v", "baseline",
       "-level", "4.0",
@@ -250,6 +250,7 @@ async function main() {
       "-r", "30",
       "-c:a", "aac",
       "-b:a", "128k",
+      "-shortest",
       "-movflags", "+faststart",
       finalPath,
     ],
