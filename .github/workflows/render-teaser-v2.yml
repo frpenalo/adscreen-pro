@@ -1,0 +1,97 @@
+name: Render Teaser v2
+
+# Renderea el teaser "The Awakening" v2 PER-PARTNER con un clip de Gemini
+# Omni (silla-trono + rayos + espejo + humo + transformaciones épicas) y le
+# CONCATENA un outro Remotion en español con el QR de selfie per-partner.
+# Cero overlay sobre el clip de Omni → cero stuttering en el Onn stick.
+# Reemplaza al teaser viejo (Kling A+B+C + AwakeningOutro inglés).
+#
+# El clip de Omni vive en remotion/public/TeaserV2.mp4 — debe estar
+# commiteado en el repo antes de correr este workflow.
+#
+# ⚠️ Tras renderizar, bumpear TEASER_VERSION en src/pages/PlayerPage.tsx
+# (cache-buster del WebView) y deployar el frontend.
+#
+# Trigger manual desde GitHub UI:
+#   Actions → Render Teaser v2 → Run workflow → llenar inputs
+#
+# Output: ad-media/partner-teasers/{screenId}.mp4 en Supabase Storage.
+
+on:
+  workflow_dispatch:
+    inputs:
+      screen_id:
+        description: "Screen UUID del partner (ej. 154f35ed-ff6f-4354-978b-cff46a0b9f82)"
+        required: true
+        type: string
+      selfie_url:
+        description: "URL del selfie del partner (ej. https://adscreenpro.com/selfie/154f35ed-ff6f-4354-978b-cff46a0b9f82)"
+        required: true
+        type: string
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Chrome/Chromium dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxrandr2 \
+            libgbm1 \
+            libpango-1.0-0 \
+            libcairo2 \
+            libasound2-dev \
+            libx11-xcb1
+
+      - name: Install Remotion dependencies
+        working-directory: remotion
+        run: npm install
+
+      - name: Ensure render script dependencies
+        working-directory: remotion
+        run: npm install @remotion/renderer @remotion/bundler qrcode @ffmpeg-installer/ffmpeg
+
+      - name: Verify Omni teaser clip exists
+        working-directory: remotion
+        run: |
+          if [ ! -f "public/TeaserV2.mp4" ]; then
+            echo "❌ Falta public/TeaserV2.mp4"
+            echo "Genera el teaser en Gemini Omni y commitealo al repo antes."
+            exit 1
+          fi
+          echo "✓ Omni teaser clip OK ($(du -h public/TeaserV2.mp4 | cut -f1))"
+
+      - name: Render Teaser v2 and upload to Storage
+        working-directory: remotion
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node scripts/build-teaser-v2.mjs \
+            "${{ github.event.inputs.screen_id }}" \
+            "${{ github.event.inputs.selfie_url }}"
+
+      - name: Upload MP4 as workflow artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: teaser-v2-${{ github.event.inputs.screen_id }}
+          path: remotion/out/teaser-v2-${{ github.event.inputs.screen_id }}.mp4
+          retention-days: 7

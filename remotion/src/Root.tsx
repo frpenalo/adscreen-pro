@@ -7,6 +7,7 @@ import { AwakeningOutro } from "./AwakeningOutro";
 import { SalesAdV2 } from "./SalesAdV2";
 import { SalesAdOutro } from "./SalesAdOutro";
 import { SalesAdV3Outro } from "./SalesAdV3Outro";
+import { TeaserOutro } from "./TeaserOutro";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -137,6 +138,22 @@ export const RemotionRoot: React.FC = () => {
           qrUrl:
             "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://adscreenpro.com",
           businessName: "Tu Barbería",
+        }}
+      />
+
+      {/* ── Teaser Outro v2 (español) — cierre del teaser de Gemini Omni ── */}
+      {/* Va DESPUÉS del clip de Omni (silla-trono + transformaciones). QR de */}
+      {/* selfie per-partner. 6s @ 30fps = 180 frames. Reemplaza AwakeningOutro. */}
+      <Composition
+        id="TeaserOutro"
+        component={TeaserOutro}
+        durationInFrames={180}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{
+          qrUrl:
+            "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://adscreenpro.com/selfie/demo",
         }}
       />
 
