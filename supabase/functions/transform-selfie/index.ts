@@ -77,7 +77,12 @@ const pickTitle = (style: string): string => {
 // per day is enough for legitimate "I'll try a different style"
 // behavior, but blocks the screenshot-farming attack the user flagged.
 const LIMIT_PER_FP_24H = 2;   // máx 2 selfies por cliente/día (costo de IA)
-const LIMIT_PER_IP_24H = 5;
+// Tope por IP — antes 5, pero penalizaba a las barberías donde los clientes
+// usan la WiFi del local (todos comparten IP → toda la tienda topaba en 5).
+// El geofence (solo dentro del local) + el límite por fingerprint (2/persona)
+// ya frenan el abuso; este queda alto, solo como tope anti-spam masivo
+// (un atacante con incógnito infinito). ~40 cubre una barbería muy activa.
+const LIMIT_PER_IP_24H = 40;
 const MAX_ACTIVE_PER_SCREEN = 4;  // máx 4 activos a la vez (no saturar anuncios)
 // Selfies expire 60 minutes after creation — covers a typical
 // barbershop visit (30-60 min) with a small buffer. Originally 8h,
