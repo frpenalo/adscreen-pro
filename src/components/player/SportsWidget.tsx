@@ -27,6 +27,7 @@ interface Slide {
 }
 
 interface LeagueCounts {
+  WC: number;
   LMX: number;
   MLS: number;
   LAL: number;
@@ -139,10 +140,11 @@ function interleave<T>(groups: T[][]): T[] {
 
 // Last breakdown of games per league (updated by buildSlides). Rendered
 // as a small diagnostic strip so we can see from the TV without DevTools.
-let leagueCounts: LeagueCounts = { LMX: 0, MLS: 0, LAL: 0, MLB: 0, NBA: 0, NFL: 0, NHL: 0 };
+let leagueCounts: LeagueCounts = { WC: 0, LMX: 0, MLS: 0, LAL: 0, MLB: 0, NBA: 0, NFL: 0, NHL: 0 };
 
 async function buildSlides(): Promise<Slide[]> {
   const [
+    worldCupEvents,
     mlbEvents,
     nbaEvents,
     nhlEvents,
@@ -151,6 +153,7 @@ async function buildSlides(): Promise<Slide[]> {
     ligaMxEvents,
     laLigaEvents,
   ] = await Promise.all([
+    fetchScoreboard("soccer", "fifa.world"), // Mundial FIFA 2026
     fetchScoreboard("baseball", "mlb"),
     fetchScoreboard("basketball", "nba"),
     fetchScoreboard("hockey", "nhl"),
@@ -161,7 +164,8 @@ async function buildSlides(): Promise<Slide[]> {
   ]);
 
   console.log(
-    "Games today — MLB:", mlbEvents.length,
+    "Games today — WorldCup:", worldCupEvents.length,
+    "MLB:", mlbEvents.length,
     "NBA:", nbaEvents.length,
     "NHL:", nhlEvents.length,
     "NFL:", nflEvents.length,
@@ -178,6 +182,7 @@ async function buildSlides(): Promise<Slide[]> {
     return games.map((g) => ({ sport, icon, games: [g] }));
   };
 
+  const worldCupSlides = makeSlides(worldCupEvents, "Mundial", "🏆");
   const mlbSlides = makeSlides(mlbEvents, "MLB", "⚾", MLB_PRIORITY);
   const nbaSlides = makeSlides(nbaEvents, "NBA", "🏀", NBA_PRIORITY);
   const nhlSlides = makeSlides(
@@ -195,8 +200,10 @@ async function buildSlides(): Promise<Slide[]> {
   const laLigaSlides = makeSlides(laLigaEvents, "La Liga", "⚽");
 
   // Round-robin across all sports so the rotation always shows variety.
-  // Soccer leagues first (priority for Latam audience), then US sports.
+  // Mundial primero (máxima prioridad mientras se juega), luego ligas de
+  // fútbol (audiencia latina) y por último deportes US.
   const all = interleave([
+    worldCupSlides,
     ligaMxSlides,
     mlsSlides,
     laLigaSlides,
@@ -207,6 +214,7 @@ async function buildSlides(): Promise<Slide[]> {
   ]);
 
   leagueCounts = {
+    WC: worldCupSlides.length,
     LMX: ligaMxSlides.length,
     MLS: mlsSlides.length,
     LAL: laLigaSlides.length,
@@ -218,6 +226,7 @@ async function buildSlides(): Promise<Slide[]> {
 
   console.log(
     "Slide counts —",
+    "WorldCup:", worldCupSlides.length,
     "LigaMX:", ligaMxSlides.length,
     "MLS:", mlsSlides.length,
     "LaLiga:", laLigaSlides.length,
@@ -415,11 +424,14 @@ export default function SportsWidget() {
           >
             {/* Sport header */}
             <div
-              className="text-white/80 tracking-widest uppercase flex items-center gap-2"
-              style={{ fontSize: "1.6vw" }}
+              className="text-white tracking-widest uppercase flex items-center gap-3"
+              style={{
+                fontSize: "2.8vw",
+                textShadow: "0 2px 14px rgba(0,0,0,0.8)",
+              }}
             >
               <span>{slide.icon}</span>
-              <span style={{ fontWeight: 600 }}>{slide.sport}</span>
+              <span style={{ fontWeight: 800 }}>{slide.sport}</span>
             </div>
 
             {/* Games */}
@@ -443,6 +455,7 @@ export default function SportsWidget() {
           className="absolute bottom-4 left-4 text-white/50 text-xs tracking-widest tabular-nums flex gap-3"
           style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
         >
+          <span>WC:{leagueCounts.WC}</span>
           <span>LMX:{leagueCounts.LMX}</span>
           <span>MLS:{leagueCounts.MLS}</span>
           <span>LAL:{leagueCounts.LAL}</span>
