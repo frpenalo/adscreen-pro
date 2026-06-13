@@ -18,6 +18,11 @@
  * (se escala el Omni y se normaliza el fps en el concat, una sola re-encode).
  * Audio: se preserva el del clip de Omni + silencio para el tramo del outro.
  *
+ * HOLD: el clip de Omni termina justo cuando aparece su tarjeta de texto
+ * ("TU ANUNCIO PUEDE APARECER EN ESTA PANTALLA..."), sin dar tiempo a leerla
+ * antes del outro. Se congela el último frame del Omni HOLD_SECONDS extra
+ * (tpad clona el frame, apad iguala el audio con silencio) para que se lea.
+ *
  * Usage:
  *   node scripts/build-sales-ad-v3.mjs \
  *     <screenId> <businessName> <advertiserSignupUrl>
@@ -49,6 +54,10 @@ const TMP = os.tmpdir();
 // El clip de Omni vive acá. El user lo sube manualmente una vez (commiteado).
 const OMNI_CLIP_FILENAME = "SalesAdV3.mp4";
 const OMNI_CLIP_PATH = path.join(PUBLIC, OMNI_CLIP_FILENAME);
+
+// Segundos que se congela el último frame del clip de Omni antes del outro,
+// para dar tiempo a leer su tarjeta de texto final.
+const HOLD_SECONDS = 3;
 
 // ── Args ─────────────────────────────────────────────────────────────────────
 const [screenId, businessName, advertiserSignupUrl] = process.argv.slice(2);
@@ -217,12 +226,14 @@ async function main() {
       "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", // 2: silencio para el outro
       "-filter_complex",
       // Normalizar ambos videos al mismo formato antes de concatenar.
-      "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v0];" +
+      // tpad congela el último frame del Omni HOLD_SECONDS extra (tiempo de
+      // lectura de su tarjeta de texto). apad iguala el audio con silencio.
+      `[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,tpad=stop_mode=clone:stop_duration=${HOLD_SECONDS}[v0];` +
         "[1:v]scale=1920:1080,setsar=1,fps=30[v1];" +
-        // Audio: del Omni (0:a) para su tramo; silencio (2:a) recortado a 6s
-        // (la duración del outro) para el tramo del outro.
+        // Audio: del Omni (0:a) + silencio del hold; silencio (2:a) recortado
+        // a 6s (la duración del outro) para el tramo del outro.
         "[2:a]atrim=duration=6,asetpts=PTS-STARTPTS[sil];" +
-        "[0:a]asetpts=PTS-STARTPTS[a0];" +
+        `[0:a]asetpts=PTS-STARTPTS,apad=pad_dur=${HOLD_SECONDS}[a0];` +
         "[v0][a0][v1][sil]concat=n=2:v=1:a=1[v][a]",
       "-map", "[v]",
       "-map", "[a]",
