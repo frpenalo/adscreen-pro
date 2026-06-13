@@ -6,6 +6,7 @@ import { SpecAd } from "./SpecAd";
 import { AwakeningOutro } from "./AwakeningOutro";
 import { SalesAdV2 } from "./SalesAdV2";
 import { SalesAdOutro } from "./SalesAdOutro";
+import { SalesAdV3Outro } from "./SalesAdV3Outro";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -112,6 +113,24 @@ export const RemotionRoot: React.FC = () => {
         component={SalesAdOutro}
         durationInFrames={144}
         fps={24}
+        width={1920}
+        height={1080}
+        defaultProps={{
+          qrUrl:
+            "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://adscreenpro.com",
+          businessName: "Tu Barbería",
+        }}
+      />
+
+      {/* ── SalesAd v3 Outro — QR per-partner + invitación ── */}
+      {/* Va DESPUÉS del clip de Gemini Omni (recorrido + 3 anuncios + texto */}
+      {/* ya quemado por Omni). El build concatena clip Omni RAW + este outro */}
+      {/* — sin overlay encima del video. 6s @ 30fps = 180 frames. */}
+      <Composition
+        id="SalesAdV3Outro"
+        component={SalesAdV3Outro}
+        durationInFrames={180}
+        fps={30}
         width={1920}
         height={1080}
         defaultProps={{
