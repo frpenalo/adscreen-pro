@@ -33,8 +33,5 @@ verify_jwt = false
 [functions.claim-coupon]
 verify_jwt = false
 
-[functions.send-monthly-reports]
-verify_jwt = false
-
 [functions.render-all]
 verify_jwt = false
