@@ -94,9 +94,15 @@ const SELFIE_EXPIRES_MINUTES = 60;
 // business. Tight on purpose: someone outside the building (parking
 // lot, sidewalk, neighboring shop) shouldn't be able to inject
 // content onto the TV.
-//   60m  — typical store interior + minor GPS drift
+//   150m — store interior + GPS drift + GEOCODING error. El lat/lng del
+//          partner viene del geocoding de la dirección (Nominatim), que
+//          puede estar 50-200m off del punto real. Con 60m rechazábamos a
+//          clientes que SÍ estaban adentro (ej. Fade Factory: 80m off). El
+//          fix preciso es corregir el pin de cada partner en el admin;
+//          mientras, 150m absorbe el error sin permitir tomar selfies a
+//          cuadras de distancia.
 //   75m  — max reported accuracy we'll trust; worse fix → reject
-const MAX_DISTANCE_METERS = 60;
+const MAX_DISTANCE_METERS = 150;
 const MAX_ACCURACY_METERS = 75;
 
 // Haversine distance between two lat/lng points, in meters.
