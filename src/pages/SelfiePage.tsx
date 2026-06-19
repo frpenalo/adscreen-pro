@@ -37,7 +37,7 @@ const STYLES = [
   { id: "wanted",        emoji: "🤠", label: "Wanted poster" },
 ];
 
-type Step = "pick-style" | "take-photo" | "loading" | "success" | "waiting-result" | "result-ready" | "error" | "geo-denied";
+type Step = "pick-style" | "take-photo" | "loading" | "success" | "waiting-result" | "result-ready" | "error";
 
 // Polling cadence for the background AI job. The customer's phone hits
 // get_selfie_status() every 4s after submit until the status flips from
@@ -46,36 +46,6 @@ type Step = "pick-style" | "take-photo" | "loading" | "success" | "waiting-resul
 // with 10 simultaneous selfies doesn't get DDOS'd by their RPC.
 const POLL_INTERVAL_MS = 4_000;
 const POLL_TIMEOUT_MS = 120_000; // 2 min — gpt-image-2 worst case
-
-// ── Geolocation ────────────────────────────────────────────────────────────
-// Customer MUST be physically inside the partner's business (≤60m
-// from the geocoded address, with GPS accuracy ≤75m). Two reasons:
-//
-//   1. The reveal on the TV is the social moment — only matters if
-//      the customer is there to see it (and friends/staff react).
-//   2. Prevents abuse: someone outside the building (parking lot,
-//      sidewalk, neighbor) can't post inappropriate content to the
-//      partner's screen by scanning a QR through the window.
-//
-// Returns null if customer denies permission, browser lacks geo, or
-// the fix is too imprecise to trust. Caller must treat null as block.
-async function getCoords(): Promise<{ lat: number; lng: number; accuracy: number } | null> {
-  if (!("geolocation" in navigator)) return null;
-  return new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
-        accuracy: pos.coords.accuracy, // meters; smaller = better
-      }),
-      () => resolve(null),
-      // We force a fresh fix (no cache) and require high accuracy —
-      // a stale cached low-accuracy reading would let bad actors
-      // game the check from outside the building.
-      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 0 },
-    );
-  });
-}
 
 // ── Device fingerprint ─────────────────────────────────────────────────────
 // Combines stable-ish browser characteristics into a SHA-256 hash.
@@ -295,15 +265,8 @@ export default function SelfiePage() {
     setStep("loading");
     setError("");
     try {
-      // Geolocation gate — fail FAST before any expensive work.
-      // null = permission denied OR no geo support → block.
-      const coords = await getCoords();
-      if (!coords) {
-        setError("Necesitamos tu ubicación para verificar que estás en el negocio. Activa el GPS y vuelve a intentar.");
-        setStep("geo-denied");
-        return;
-      }
-
+      // El geofence por GPS se quitó (demasiada fricción). La defensa son
+      // los rate limits + la moderación de contenido por IA en el servidor.
       const fp = await getFingerprint();
       const imageBase64 = await toBase64(file);
       const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transform-selfie`;
@@ -326,28 +289,10 @@ export default function SelfiePage() {
           style,
           customerName: name.trim() || null,
           fp,
-          lat: coords.lat,
-          lng: coords.lng,
-          accuracy: coords.accuracy,
         }),
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
-        // Server-side geo rejections (too_far / low_accuracy / no_partner_geo)
-        // route to the dedicated geo-denied screen so the customer gets a
-        // clear actionable message instead of a generic toast.
-        if (errBody.code === "too_far" || errBody.code === "low_accuracy" || errBody.code === "no_partner_geo") {
-          // If the server included debug info (too_far includes
-          // distance/accuracy/coords), surface it so we can see why
-          // a legit customer was rejected during testing.
-          const dbg = errBody.debug;
-          const dbgStr = dbg
-            ? `\n\nDebug: distancia=${dbg.distance_m}m, accuracy=${dbg.accuracy_m}m, threshold=${dbg.threshold_m}m\nTú: ${dbg.customer?.lat}, ${dbg.customer?.lng}\nNegocio: ${dbg.partner?.lat}, ${dbg.partner?.lng}`
-            : "";
-          setError((errBody.error || "") + dbgStr);
-          setStep("geo-denied");
-          return;
-        }
         throw new Error(errBody.error || `Error ${res.status}`);
       }
       // The edge function returns { adId, expiresAt, message } after
@@ -678,43 +623,6 @@ export default function SelfiePage() {
         >
           Cerrar
         </button>
-      </div>
-    );
-  }
-
-  // ── STEP: geo-denied ───────────────────────────────────────────────────
-  // Customer is not at the partner location — physically too far,
-  // GPS too imprecise, or they denied the permission prompt. Show
-  // a friendly "you have to be at the business" screen with a
-  // retry button (in case they were in the doorway and just need
-  // to step inside).
-  if (step === "geo-denied") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-br from-slate-900 via-amber-950 to-slate-900 text-white">
-        <div className="text-7xl mb-4">📍</div>
-        <h2 className="text-2xl font-bold mb-2 text-center">
-          Tienes que estar en el negocio
-        </h2>
-        <p className="text-center text-white/70 max-w-sm mb-2 text-sm leading-relaxed whitespace-pre-line">
-          {error || `Para que tu selfie aparezca en la TV de ${businessName}, necesitas estar dentro del local.`}
-        </p>
-        <p className="text-center text-white/50 text-xs max-w-sm mb-8">
-          Activa el GPS de alta precisión en tu teléfono y vuelve a intentar.
-        </p>
-        <div className="flex flex-col gap-3 w-full max-w-xs">
-          <button
-            onClick={() => { setStep("take-photo"); setError(""); }}
-            className="px-6 py-3 rounded-lg bg-white/15 hover:bg-white/25 text-sm font-medium"
-          >
-            Intentar de nuevo
-          </button>
-          <button
-            onClick={() => { setStep("pick-style"); setFile(null); setPreviewUrl(""); setStyle(""); setError(""); }}
-            className="text-xs text-white/40 hover:text-white/60"
-          >
-            Empezar de nuevo
-          </button>
-        </div>
       </div>
     );
   }
