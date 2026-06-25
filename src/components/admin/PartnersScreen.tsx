@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLang } from "@/contexts/LangContext";
 import { useAllPartners } from "@/hooks/useAdminData";
 import { supabase } from "@/integrations/supabase/client";
+import { referralCode } from "@/lib/codes";
 import { useQueryClient } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -299,10 +300,10 @@ const PartnersScreen = () => {
       //    Nota: requiere unique constraint en partner_qr_codes.partner_id
       //    (ALTER TABLE ... ADD CONSTRAINT ... UNIQUE (partner_id)).
       try {
-        const referralCode = `REF-${id.slice(0, 8).toUpperCase()}`;
+        const code = referralCode(id);
         const { error: qrErr } = await supabase
           .from("partner_qr_codes")
-          .upsert({ partner_id: id, code: referralCode }, { onConflict: "partner_id" });
+          .upsert({ partner_id: id, code }, { onConflict: "partner_id" });
         if (qrErr) {
           // Antes este error se tragaba en silencio. Ahora lo vemos para
           // poder diagnosticar problemas de RLS / constraint sin volver

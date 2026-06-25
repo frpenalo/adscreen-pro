@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { normalizeRedeemCode } from "@/lib/codes";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -96,7 +97,7 @@ export default function CouponsScreen() {
   >(null);
 
   const handleRedeem = async () => {
-    const code = redeemCode.trim();
+    const code = normalizeRedeemCode(redeemCode);
     if (!code || redeeming) return;
     setRedeeming(true);
     setRedeemResult(null);

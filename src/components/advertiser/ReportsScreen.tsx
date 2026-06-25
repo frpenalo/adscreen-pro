@@ -4,6 +4,7 @@ import { jsPDF } from "jspdf";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdvertiserProfile } from "@/hooks/useAdvertiserData";
 import { supabase } from "@/integrations/supabase/client";
+import { lastMonths, aggregateByScreen, tallyCoupons } from "@/lib/report-utils";
 import { Button } from "@/components/ui/button";
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -23,23 +24,8 @@ interface ReportData {
   couponsRedeemed: number;
 }
 
-// Genera las opciones de los últimos 6 meses (incluido el actual).
-function lastMonths(count: number): { key: string; label: string; start: string; end: string }[] {
-  const out: { key: string; label: string; start: string; end: string }[] = [];
-  const now = new Date();
-  for (let i = 0; i < count; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const start = new Date(d.getFullYear(), d.getMonth(), 1);
-    const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-    out.push({
-      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
-      label: d.toLocaleDateString("es-US", { month: "long", year: "numeric" }),
-      start: start.toISOString(),
-      end: end.toISOString(),
-    });
-  }
-  return out;
-}
+// La lógica de meses y de agregación (lastMonths, aggregateByScreen,
+// tallyCoupons) vive en @/lib/report-utils y tiene sus propios tests.
 
 export default function ReportsScreen() {
   const { user } = useAuth();
@@ -62,8 +48,7 @@ export default function ReportsScreen() {
       const adIds = (ads ?? []).map((a) => a.id);
 
       // 2. Impresiones del mes (ad_logs) + desglose por pantalla
-      let impressions = 0;
-      const screenMap = new Map<string, number>();
+      let locationIds: Array<string | null | undefined> = [];
       if (adIds.length > 0) {
         const { data: logs } = await supabase
           .from("ad_logs")
@@ -71,37 +56,28 @@ export default function ReportsScreen() {
           .in("ad_id", adIds)
           .gte("created_at", month.start)
           .lt("created_at", month.end);
-        for (const l of logs ?? []) {
-          impressions++;
-          const sid = (l as any).location_id ?? "—";
-          screenMap.set(sid, (screenMap.get(sid) ?? 0) + 1);
-        }
+        locationIds = (logs ?? []).map((l) => (l as any).location_id);
       }
+      const impressions = locationIds.length;
+      const byScreen = aggregateByScreen(locationIds);
 
       // 3. Cupones del mes (coupon_claims de los coupons del advertiser)
-      let couponsClaimed = 0;
-      let couponsRedeemed = 0;
       const { data: coupons } = await (supabase as any)
         .from("coupons")
         .select("id")
         .eq("advertiser_id", user!.id);
       const couponIds = (coupons ?? []).map((c: any) => c.id);
+      let claims: Array<{ redeemed_at?: unknown }> = [];
       if (couponIds.length > 0) {
-        const { data: claims } = await (supabase as any)
+        const { data } = await (supabase as any)
           .from("coupon_claims")
           .select("redeemed_at")
           .in("coupon_id", couponIds)
           .gte("claimed_at", month.start)
           .lt("claimed_at", month.end);
-        for (const cl of claims ?? []) {
-          couponsClaimed++;
-          if (cl.redeemed_at) couponsRedeemed++;
-        }
+        claims = data ?? [];
       }
-
-      const byScreen = [...screenMap.entries()]
-        .map(([screenId, n]) => ({ screenId, impressions: n }))
-        .sort((a, b) => b.impressions - a.impressions);
+      const { claimed: couponsClaimed, redeemed: couponsRedeemed } = tallyCoupons(claims);
 
       return { impressions, byScreen, couponsClaimed, couponsRedeemed };
     },
