@@ -40,43 +40,45 @@ export default function ReportsScreen() {
     queryKey: ["advertiser-report", user?.id, monthKey],
     enabled: !!user,
     queryFn: async (): Promise<ReportData> => {
-      // 1. Ads del advertiser
-      const { data: ads } = await supabase
-        .from("ads")
-        .select("id")
-        .eq("advertiser_id", user!.id);
-      const adIds = (ads ?? []).map((a) => a.id);
+      // Las queries van en 2 fases paralelas en vez de 4 en fila:
+      //   Fase 1 — ads y coupons (independientes entre sí).
+      //   Fase 2 — ad_logs y coupon_claims (cada una depende de su id de la
+      //            fase 1, pero no una de la otra).
+      // Reduce la latencia del reporte ~a la mitad de los roundtrips.
 
-      // 2. Impresiones del mes (ad_logs) + desglose por pantalla
-      let locationIds: Array<string | null | undefined> = [];
-      if (adIds.length > 0) {
-        const { data: logs } = await supabase
-          .from("ad_logs")
-          .select("location_id")
-          .in("ad_id", adIds)
-          .gte("created_at", month.start)
-          .lt("created_at", month.end);
-        locationIds = (logs ?? []).map((l) => (l as any).location_id);
-      }
+      // Fase 1: ids del advertiser
+      const [adsRes, couponsRes] = await Promise.all([
+        supabase.from("ads").select("id").eq("advertiser_id", user!.id),
+        (supabase as any).from("coupons").select("id").eq("advertiser_id", user!.id),
+      ]);
+      const adIds = (adsRes.data ?? []).map((a: any) => a.id);
+      const couponIds = (couponsRes.data ?? []).map((c: any) => c.id);
+
+      // Fase 2: impresiones y claims del mes (en paralelo)
+      const [logsRes, claimsRes] = await Promise.all([
+        adIds.length > 0
+          ? supabase
+              .from("ad_logs")
+              .select("location_id")
+              .in("ad_id", adIds)
+              .gte("created_at", month.start)
+              .lt("created_at", month.end)
+          : Promise.resolve({ data: [] as any[] }),
+        couponIds.length > 0
+          ? (supabase as any)
+              .from("coupon_claims")
+              .select("redeemed_at")
+              .in("coupon_id", couponIds)
+              .gte("claimed_at", month.start)
+              .lt("claimed_at", month.end)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const locationIds = (logsRes.data ?? []).map((l: any) => l.location_id);
       const impressions = locationIds.length;
       const byScreen = aggregateByScreen(locationIds);
 
-      // 3. Cupones del mes (coupon_claims de los coupons del advertiser)
-      const { data: coupons } = await (supabase as any)
-        .from("coupons")
-        .select("id")
-        .eq("advertiser_id", user!.id);
-      const couponIds = (coupons ?? []).map((c: any) => c.id);
-      let claims: Array<{ redeemed_at?: unknown }> = [];
-      if (couponIds.length > 0) {
-        const { data } = await (supabase as any)
-          .from("coupon_claims")
-          .select("redeemed_at")
-          .in("coupon_id", couponIds)
-          .gte("claimed_at", month.start)
-          .lt("claimed_at", month.end);
-        claims = data ?? [];
-      }
+      const claims = (claimsRes.data ?? []) as Array<{ redeemed_at?: unknown }>;
       const { claimed: couponsClaimed, redeemed: couponsRedeemed } = tallyCoupons(claims);
 
       return { impressions, byScreen, couponsClaimed, couponsRedeemed };
