@@ -204,7 +204,7 @@ async function main() {
 
   // ── 5. Update ad record with final_media_path ────────────────────────────
   console.log("Updating ads table...");
-  await dbPatch("ads", { id: adId }, { final_media_path: videoPublicUrl });
+  await dbPatch("ads", { id: adId }, { final_media_path: videoPublicUrl, render_status: "done" });
   console.log("Ad record updated");
 
   // ── 6. Cleanup temp file ─────────────────────────────────────────────────
@@ -214,7 +214,24 @@ async function main() {
   console.log(`\nDone! Advertiser ad rendered for ad_id: ${adId}`);
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error("\nRender failed:", err.message);
+  // Best-effort: marcar el ad como fallido y avisar al admin. Sin esto el ad
+  // queda en draft con final_media_path='' para siempre y nadie se entera
+  // (el advertiser ve un hueco en Mis Anuncios y el admin un pendiente mudo).
+  try {
+    await dbPatch("ads", { id: adId }, { render_status: "failed" });
+    const res = await fetch(`${supabaseUrl}/rest/v1/admin_notifications`, {
+      method: "POST",
+      headers: { ...authHeaders, "Content-Type": "application/json", "Prefer": "return=minimal" },
+      body: JSON.stringify({
+        type: "render_failed",
+        message: `El render del anuncio de "${businessName}" falló (ad ${adId}): ${err.message}`.slice(0, 500),
+      }),
+    });
+    if (!res.ok) console.error("Admin notification failed:", res.status, await res.text());
+  } catch (e) {
+    console.error("Could not mark ad as failed:", e.message);
+  }
   process.exit(1);
 });

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "@/hooks/use-toast";
-import { Trash2, Image as ImageIcon, Video, BarChart2, Monitor, QrCode } from "lucide-react";
+import { Trash2, Image as ImageIcon, Video, BarChart2, Monitor, QrCode, Loader2 } from "lucide-react";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -91,6 +91,10 @@ const MyAdsScreen = () => {
       {ads.map((ad) => {
         const total = impressions?.[ad.id] ?? 0;
         const clickCount = clicks?.[ad.id] ?? 0;
+        // Estado del render del video animado (flujo "Mejorar con IA").
+        // NULL para subidas directas y ads viejos — no muestra nada extra.
+        const renderStatus = (ad as any).render_status as string | null;
+        const isRendering = renderStatus === "rendering" && !ad.final_media_path;
         return (
           <Card
             key={ad.id}
@@ -106,6 +110,8 @@ const MyAdsScreen = () => {
                   ) : (
                     <img src={ad.final_media_path} alt="" className="w-full h-full object-cover" />
                   )
+                ) : isRendering ? (
+                  <Loader2 className="h-6 w-6 text-violet-500 animate-spin" />
                 ) : (
                   ad.type === "video" ? <Video className="h-6 w-6 text-muted-foreground" /> : <ImageIcon className="h-6 w-6 text-muted-foreground" />
                 )}
@@ -120,7 +126,22 @@ const MyAdsScreen = () => {
                   <Badge className={`text-xs ${statusColors[ad.status]}`}>
                     {statusLabel(ad.status)}
                   </Badge>
+                  {isRendering && (
+                    <Badge className="text-xs bg-violet-100 text-violet-800">
+                      Creando video…
+                    </Badge>
+                  )}
+                  {renderStatus === "failed" && (
+                    <Badge className="text-xs bg-red-100 text-red-800">
+                      Error al crear el video
+                    </Badge>
+                  )}
                 </div>
+                {renderStatus === "failed" && (
+                  <p className="text-xs text-destructive">
+                    Hubo un problema creando tu video. Bórralo y crea el anuncio de nuevo, o contáctanos por Soporte.
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   {new Date(ad.created_at).toLocaleDateString()}
                 </p>

@@ -3,6 +3,7 @@ import { useLang } from "@/contexts/LangContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdvertiserProfile, useSubscription } from "@/hooks/useAdvertiserData";
 import { supabase } from "@/integrations/supabase/client";
+import { computeAdsUsage } from "@/lib/plan-limits";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,12 +29,6 @@ const ENHANCE_STAGES: Array<{ min: number; label: string; emoji: string }> = [
   { min: 48, label: "Aplicando últimos detalles",    emoji: "✨" },
 ];
 const ENHANCE_TOTAL_SECONDS = 60;
-
-const PLAN_LIMITS: Record<string, { ads: number }> = {
-  basico:    { ads: 2 },
-  pro:       { ads: 5 },
-  unlimited: { ads: 999 },
-};
 
 type MediaType = "image" | "video" | null;
 
@@ -98,13 +93,10 @@ const CreateAdScreen = () => {
   }, [processing]);
 
   // ── Plan limits ──────────────────────────────────────────────────────────────
-  const plan = (profile as any)?.plan ?? "basico";
-  const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS.basico;
-  const lastReset = profile ? new Date((profile as any).last_month_reset || "2000-01-01") : new Date("2000-01-01");
-  const now = new Date();
-  const isNewMonth = lastReset.getFullYear() < now.getFullYear() || lastReset.getMonth() < now.getMonth();
-  const adsUsed = isNewMonth ? 0 : ((profile as any)?.ads_this_month ?? 0);
-  const remainingAds = limits.ads - adsUsed;
+  // El cálculo vive en @/lib/plan-limits (testeado). El contador lo mantiene
+  // un trigger de Postgres al insertar/borrar ads — ver migración
+  // 20260706000001_advertiser_ad_limits.sql.
+  const { limit: adLimit, remaining: remainingAds } = computeAdsUsage(profile as any);
 
   const isActive = (subscription?.subscribed ?? false) || (profile?.is_active ?? false);
   const isDemo = user?.email === DEMO_EMAIL;
@@ -264,6 +256,7 @@ const CreateAdScreen = () => {
           type: "video",
           final_media_path: "",
           status: "draft",
+          render_status: "rendering",
           metadata: { photo_url: enhancedUrl },
         } as any)
         .select("id")
@@ -272,26 +265,41 @@ const CreateAdScreen = () => {
       const adId = (adData as any).id;
 
       // Dispatch the Remotion render. Returns immediately — the workflow
-      // runs on GitHub Actions and updates the ad's final_media_path
-      // when finished. We don't block the user on this.
+      // runs on GitHub Actions and updates the ad's final_media_path +
+      // render_status when finished. We don't block the user on the RENDER,
+      // but we DO verify the dispatch itself: si el disparo falla (GitHub
+      // caído, GH_PAT vencido) el render nunca va a arrancar, así que
+      // borramos el ad huérfano (el trigger devuelve el cupo) y le decimos
+      // la verdad al usuario en vez de un falso "¡Enviado!".
       const videoFnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad-video`;
-      await fetch(videoFnUrl, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ad_id: adId,
-          photo_url: enhancedUrl,
-          business_name: adBusinessName.trim() || profile?.business_name || "",
-          tagline: adTagline.trim(),
-          cta: adCta.trim(),
-          advertiser_id: user.id,
-          category: (profile as any)?.category ?? "",
-        }),
-      });
+      let videoRes: Response;
+      try {
+        videoRes = await fetch(videoFnUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ad_id: adId,
+            photo_url: enhancedUrl,
+            business_name: adBusinessName.trim() || profile?.business_name || "",
+            tagline: adTagline.trim(),
+            cta: adCta.trim(),
+            advertiser_id: user.id,
+            category: (profile as any)?.category ?? "",
+          }),
+        });
+      } catch {
+        await supabase.from("ads").delete().eq("id", adId);
+        throw new Error("No pudimos iniciar la creación del video. Revisa tu conexión e intenta de nuevo.");
+      }
+      if (!videoRes.ok) {
+        await supabase.from("ads").delete().eq("id", adId);
+        const err = await videoRes.json().catch(() => ({} as any));
+        throw new Error(err.error || "No pudimos iniciar la creación del video. Intenta de nuevo en unos minutos.");
+      }
 
       // Notify the admin that there's a new ad to review.
       await supabase.from("admin_notifications").insert({
@@ -350,6 +358,10 @@ const CreateAdScreen = () => {
   const handleSubmitVideo = async () => {
     if (isDemo) { setShowDemoModal(true); return; }
     if (!user || !file || submitting) return;
+    if (remainingAds <= 0) {
+      toast({ title: "Alcanzaste el límite de anuncios este mes.", variant: "destructive" });
+      return;
+    }
     setSubmitting(true);
     try {
       const path = `${user.id}/${Date.now()}.mp4`;
@@ -410,7 +422,7 @@ const CreateAdScreen = () => {
       <div className="space-y-6 max-w-lg mx-auto">
         <div className={`flex items-center justify-between px-4 py-2.5 rounded-lg border text-sm font-medium ${remainingAds > 0 ? "bg-primary/5 border-primary/20 text-primary" : "bg-destructive/10 border-destructive/20 text-destructive"}`}>
           <span>Anuncios este mes</span>
-          <span>{remainingAds > 0 ? `${remainingAds} de ${limits.ads} disponibles` : "Límite alcanzado"}</span>
+          <span>{remainingAds > 0 ? `${remainingAds} de ${adLimit} disponibles` : "Límite alcanzado"}</span>
         </div>
         <Card>
           <CardHeader>
