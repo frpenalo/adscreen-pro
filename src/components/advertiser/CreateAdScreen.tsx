@@ -364,17 +364,63 @@ const CreateAdScreen = () => {
     }
     setSubmitting(true);
     try {
-      const path = `${user.id}/${Date.now()}.mp4`;
-      const { error: uploadErr } = await supabase.storage.from("ad-media").upload(path, file, { contentType: "video/mp4" });
+      const { data: sessionData } = await supabase.auth.refreshSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("No session");
+
+      // El video del cliente NO va directo a las pantallas: se sube como
+      // "crudo" y un workflow lo re-encodea al perfil Android-safe (el
+      // formato de iPhone —HEVC, 60fps, 4K— congela el WebView de los
+      // sticks: el PIPELINE_ERROR de mayo). El ad queda en render_status
+      // 'rendering' y el transcode lo marca 'done' con la URL final.
+      const rawPath = `${user.id}/raw-${Date.now()}.mp4`;
+      const { error: uploadErr } = await supabase.storage
+        .from("ad-media")
+        .upload(rawPath, file, { contentType: file.type || "video/mp4" });
       if (uploadErr) throw uploadErr;
-      const { data: publicUrl } = supabase.storage.from("ad-media").getPublicUrl(path);
-      const { error: insertErr } = await supabase.from("ads").insert({
-        advertiser_id: user.id,
-        type: "video" as const,
-        final_media_path: publicUrl.publicUrl,
-        status: "draft" as const,
-      });
+      const { data: rawUrl } = supabase.storage.from("ad-media").getPublicUrl(rawPath);
+
+      const { data: adData, error: insertErr } = await supabase
+        .from("ads")
+        .insert({
+          advertiser_id: user.id,
+          type: "video",
+          final_media_path: "",
+          status: "draft",
+          render_status: "rendering",
+        } as any)
+        .select("id")
+        .single();
       if (insertErr) throw insertErr;
+      const adId = (adData as any).id;
+
+      // Igual que el flujo de IA: verificamos que el dispatch arrancó. Si
+      // falla, limpiamos el ad huérfano (el trigger devuelve el cupo) y el
+      // crudo subido, y se lo decimos al usuario en vez de fingir éxito.
+      const transcodeFnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcode-ad`;
+      let transcodeRes: Response;
+      try {
+        transcodeRes = await fetch(transcodeFnUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ ad_id: adId, video_url: rawUrl.publicUrl }),
+        });
+      } catch {
+        await supabase.from("ads").delete().eq("id", adId);
+        await supabase.storage.from("ad-media").remove([rawPath]);
+        throw new Error("No pudimos procesar tu video. Revisa tu conexión e intenta de nuevo.");
+      }
+      if (!transcodeRes.ok) {
+        await supabase.from("ads").delete().eq("id", adId);
+        await supabase.storage.from("ad-media").remove([rawPath]);
+        const err = await transcodeRes.json().catch(() => ({} as any));
+        throw new Error(err.error || "No pudimos procesar tu video. Intenta de nuevo en unos minutos.");
+      }
+
       await supabase.from("admin_notifications").insert({
         type: "new_ad",
         message: `Nuevo video pendiente de ${profile?.business_name ?? "un anunciante"}.`,

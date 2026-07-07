@@ -187,12 +187,12 @@ REQUIRED OUTPUT: Only the prompt text in English.`;
     // OpenAI's /v1/images/edits endpoint takes the original photo as a
     // multipart upload + a text prompt describing the transformation.
     // Returns one (or more) generated images as base64. We request
-    // 1024x1024 (square) at quality "low" — fastest combination. The
-    // Remotion render later composes the final 1920x1080 video so the
-    // aspect ratio at this stage doesn't matter for the final output.
-    // Speed matters because Supabase Edge Functions have a wall-clock
-    // limit (typically 25-150s depending on plan); a slower
-    // gpt-image-2 call risked the connection dropping mid-flight.
+    // 1536x1024 (landscape) at quality "medium": the Remotion video is
+    // 1920x1080 with objectFit:cover, so a 1024x1024 square source lost
+    // ~44% to cropping AND got upscaled 1.9x from a low-quality render —
+    // visibly soft on a 50" TV. Landscape+medium keeps the crop minimal
+    // and the upscale small. The 90s AbortController below still guards
+    // the edge function wall-clock if the slower quality tier drags.
     const userPrompt = `Completely reimagine this photo as a high-budget professional TV commercial. DO NOT add text or graphics on top of the original photo — fully transform the scene.
 
 ${generatedPrompt}
@@ -215,8 +215,8 @@ CRITICAL: Create a completely new commercial image. Do NOT overlay graphics or s
     formData.append("model", "gpt-image-2");
     formData.append("image", imageBlob, "input.jpg");
     formData.append("prompt", userPrompt);
-    formData.append("size", "1024x1024");
-    formData.append("quality", "low");
+    formData.append("size", "1536x1024");
+    formData.append("quality", "medium");
     formData.append("n", "1");
 
     const step2StartedAt = Date.now();

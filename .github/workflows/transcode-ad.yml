@@ -1,0 +1,48 @@
+name: Transcode Advertiser Video
+
+# Re-encode Android-safe de los videos que el advertiser sube directo desde
+# su dashboard (ver remotion/scripts/transcode-ad.mjs). Lo despacha la edge
+# function transcode-ad.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ad_id:
+        description: "Ad UUID"
+        required: true
+        type: string
+      video_url:
+        description: "Public URL of the raw uploaded video (ad-media bucket)"
+        required: true
+        type: string
+
+jobs:
+  transcode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # El script solo necesita el binario estático de ffmpeg (no renderiza
+      # con Remotion ni usa Chrome, así que este workflow se salta las
+      # dependencias de sistema que sí instalan los workflows de render).
+      - name: Install ffmpeg static binary
+        working-directory: remotion
+        run: npm install --no-save @ffmpeg-installer/ffmpeg
+
+      - name: Transcode video and publish
+        working-directory: remotion
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node scripts/transcode-ad.mjs \
+            "${{ github.event.inputs.ad_id }}" \
+            "${{ github.event.inputs.video_url }}"
