@@ -1,142 +1,67 @@
-import { useRef } from "react";
-import { useLang } from "@/contexts/LangContext";
-import { Upload, Sparkles, Tv } from "lucide-react";
-import { AnimatedBeam } from "@/components/magicui/animated-beam";
+import { Upload, CheckCircle2, Tv, ClipboardList, MonitorSmartphone, TrendingUp } from "lucide-react";
 
-const steps = [
-  {
-    icon: Upload,
-    num: "01",
-    color: "#3b82f6",
-    bg: "rgba(59,130,246,0.1)",
-  },
-  {
-    icon: Sparkles,
-    num: "02",
-    color: "#8b5cf6",
-    bg: "rgba(139,92,246,0.1)",
-  },
-  {
-    icon: Tv,
-    num: "03",
-    color: "#10b981",
-    bg: "rgba(16,185,129,0.1)",
-  },
+// ── Cómo funciona ─────────────────────────────────────────────────────────────
+// Dos recorridos de 3 pasos: uno para anunciantes, otro para partners.
+
+const ADVERTISER_STEPS = [
+  { icon: Upload, title: "Envías o subes tu anuncio", desc: "Sube tu imagen o video, o parte de una sola foto — nuestra IA te arma el anuncio.", color: "#7c3aed" },
+  { icon: CheckCircle2, title: "Lo revisamos y aprobamos", desc: "Nuestro equipo revisa tu contenido para que salga bien en pantalla. Normalmente en menos de 24h.", color: "#c026d3" },
+  { icon: Tv, title: "Tu anuncio aparece en pantallas locales", desc: "Entra en la rotación de la red, frente a clientes reales en barberías y salones de Raleigh.", color: "#ec4899" },
 ];
 
+const PARTNER_STEPS = [
+  { icon: ClipboardList, title: "Registras tu negocio", desc: "Te apuntas como partner en unos minutos. Sin costo.", color: "#0891b2" },
+  { icon: MonitorSmartphone, title: "Instalamos o activamos la pantalla", desc: "Te ayudamos a poner tu TV a mostrar la red de anuncios.", color: "#0ea5e9" },
+  { icon: TrendingUp, title: "Ganas por anuncios y referidos", desc: "Recibes ingresos por cada anunciante activo en tu pantalla, según el programa.", color: "#10b981" },
+];
+
+type Step = { icon: typeof Upload; title: string; desc: string; color: string };
+
+const Track = ({ label, steps }: { label: string; steps: Step[] }) => (
+  <div>
+    <div className="mb-6 flex items-center gap-3">
+      <span className="text-sm font-bold uppercase tracking-widest" style={{ color: steps[0].color }}>{label}</span>
+      <div className="h-px flex-1" style={{ background: "#e2e8f0" }} />
+    </div>
+    <div className="grid gap-4 sm:grid-cols-3">
+      {steps.map((s, i) => (
+        <div key={i} className="relative rounded-2xl border p-6" style={{ borderColor: "#e2e8f0", background: "#ffffff" }}>
+          <div
+            className="flex h-14 w-14 items-center justify-center rounded-2xl"
+            style={{ background: s.color, boxShadow: `0 8px 22px ${s.color}44` }}
+          >
+            <s.icon className="h-7 w-7 text-white" />
+          </div>
+          <div
+            className="absolute right-5 top-5 text-3xl font-extrabold"
+            style={{ color: `${s.color}22` }}
+          >
+            {i + 1}
+          </div>
+          <h3 className="mt-4 text-base font-bold" style={{ color: "#0f172a" }}>{s.title}</h3>
+          <p className="mt-2 text-sm leading-relaxed" style={{ color: "#64748b" }}>{s.desc}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 const HowItWorksSection = () => {
-  const { t } = useLang();
-  const stepData = [
-    { title: t.howItWorks.step1Title, desc: t.howItWorks.step1Desc },
-    { title: t.howItWorks.step2Title, desc: t.howItWorks.step2Desc },
-    { title: t.howItWorks.step3Title, desc: t.howItWorks.step3Desc },
-  ];
-
-  // Refs for AnimatedBeam: container bounds the SVG, the icon refs are
-  // the from/to anchor points so the gradient line follows wherever the
-  // grid layout puts each step (responsive — desktop vs mobile).
-  const containerRef = useRef<HTMLDivElement>(null);
-  const step1Ref = useRef<HTMLDivElement>(null);
-  const step2Ref = useRef<HTMLDivElement>(null);
-  const step3Ref = useRef<HTMLDivElement>(null);
-  const stepRefs = [step1Ref, step2Ref, step3Ref];
-
   return (
-    <section id="how-it-works" className="py-12 md:py-16" style={{ background: "#f1f5f9" }}>
+    <section id="how-it-works" className="py-16 md:py-20" style={{ background: "#f8fafc" }}>
       <div className="container">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold md:text-4xl" style={{ color: "#0f172a" }}>
-            {t.howItWorks.title}
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl" style={{ color: "#0f172a" }}>
+            Cómo funciona
           </h2>
-          <p className="mx-auto mt-3 max-w-xl" style={{ color: "#64748b" }}>
-            Crear y publicar tu anuncio nunca había sido tan fácil
+          <p className="mx-auto mt-3 max-w-xl text-lg" style={{ color: "#64748b" }}>
+            Simple para todos: en 3 pasos estás al aire o generando ingresos.
           </p>
         </div>
 
-        <div ref={containerRef} className="mt-14 grid gap-0 md:grid-cols-3 relative">
-          {/* AnimatedBeam overlay — absolute-positioned so it doesn't take
-              a grid cell (last bug: the wrapper was eating column 1, which
-              pushed step 1 into column 2 and step 3 onto a new row).
-              Hidden under md because beams between vertically-stacked
-              steps would zig-zag awkwardly. */}
-          <div className="absolute inset-0 pointer-events-none hidden md:block">
-            <AnimatedBeam
-              containerRef={containerRef}
-              fromRef={step1Ref}
-              toRef={step2Ref}
-              gradientStartColor="#3b82f6"
-              gradientStopColor="#8b5cf6"
-              duration={4}
-            />
-            <AnimatedBeam
-              containerRef={containerRef}
-              fromRef={step2Ref}
-              toRef={step3Ref}
-              gradientStartColor="#8b5cf6"
-              gradientStopColor="#10b981"
-              duration={4}
-              delay={1.5}
-            />
-          </div>
-
-          {stepData.map((step, i) => (
-            <div
-              key={i}
-              style={{
-                borderRadius: "16px",
-                padding: "32px 24px",
-                textAlign: "center",
-                position: "relative",
-                zIndex: 1,
-              }}
-            >
-              {/* Icon circle */}
-              <div
-                ref={stepRefs[i]}
-                style={{
-                  width: "72px",
-                  height: "72px",
-                  borderRadius: "50%",
-                  background: steps[i].color,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  margin: "0 auto 20px",
-                  position: "relative",
-                  boxShadow: `0 8px 24px ${steps[i].color}55`,
-                }}
-              >
-                {(() => { const Icon = steps[i].icon; return <Icon style={{ width: "28px", height: "28px", color: "#fff" }} />; })()}
-                {/* Step number badge */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "-6px",
-                    right: "-6px",
-                    width: "22px",
-                    height: "22px",
-                    borderRadius: "50%",
-                    background: steps[i].color,
-                    color: "#fff",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {i + 1}
-                </div>
-              </div>
-
-              <h3 style={{ marginBottom: "10px", fontSize: "17px", fontWeight: 700, color: "#0f172a" }}>
-                {step.title}
-              </h3>
-              <p style={{ fontSize: "14px", color: "#64748b", lineHeight: 1.65 }}>
-                {step.desc}
-              </p>
-            </div>
-          ))}
+        <div className="mx-auto mt-12 max-w-5xl space-y-12">
+          <Track label="Para anunciantes" steps={ADVERTISER_STEPS} />
+          <Track label="Para partners" steps={PARTNER_STEPS} />
         </div>
       </div>
     </section>

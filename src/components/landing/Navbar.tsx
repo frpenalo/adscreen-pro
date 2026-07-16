@@ -14,14 +14,24 @@ const Navbar = () => {
         <Link to="/" className="text-xl font-bold text-foreground">
           AdScreenPro
         </Link>
-        <div className="hidden items-center gap-8 md:flex">
+        <div className="hidden items-center gap-7 md:flex">
+          <button onClick={() => scrollTo("prueba-local")} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pantallas</button>
           <button onClick={() => scrollTo("how-it-works")} className="text-sm text-muted-foreground hover:text-foreground transition-colors">{t.nav.howItWorks}</button>
-          <button onClick={() => scrollTo("benefits")} className="text-sm text-muted-foreground hover:text-foreground transition-colors">{t.nav.benefits}</button>
           <button onClick={() => scrollTo("pricing")} className="text-sm text-muted-foreground hover:text-foreground transition-colors">{t.nav.pricing}</button>
+          <button onClick={() => scrollTo("faq")} className="text-sm text-muted-foreground hover:text-foreground transition-colors">FAQ</button>
         </div>
-        <Link to="/login" className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90">
-          {t.nav.login}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link to="/login" className="hidden rounded-lg px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-block">
+            {t.nav.login}
+          </Link>
+          <Link
+            to="/register?role=advertiser"
+            data-track="cta-nav"
+            className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            Anunciarme
+          </Link>
+        </div>
       </div>
     </nav>
   );

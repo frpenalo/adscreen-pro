@@ -1,10 +1,12 @@
 import Navbar from "@/components/landing/Navbar";
 import HeroSection from "@/components/landing/HeroSection";
+import LocalProofSection from "@/components/landing/LocalProofSection";
 import ImpactSection from "@/components/landing/ImpactSection";
 import HowItWorksSection from "@/components/landing/HowItWorksSection";
-import BenefitsSection from "@/components/landing/BenefitsSection";
+import AudiencesSection from "@/components/landing/AudiencesSection";
 import PricingSection from "@/components/landing/PricingSection";
-import ContactSection from "@/components/landing/ContactSection";
+import FaqSection from "@/components/landing/FaqSection";
+import FinalCtaSection from "@/components/landing/FinalCtaSection";
 import Footer from "@/components/landing/Footer";
 
 const Index = () => {
@@ -12,11 +14,13 @@ const Index = () => {
     <div className="min-h-screen">
       <Navbar />
       <HeroSection />
+      <LocalProofSection />
       <ImpactSection />
       <HowItWorksSection />
-      <BenefitsSection />
+      <AudiencesSection />
       <PricingSection />
-      <ContactSection />
+      <FaqSection />
+      <FinalCtaSection />
       <Footer />
     </div>
   );

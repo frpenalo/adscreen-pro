@@ -1,7 +1,7 @@
 import { Tv, Clock, Users, TrendingUp } from "lucide-react";
 import { NumberTicker } from "@/components/magicui/number-ticker";
 
-const SCREENS = 10;
+const SCREENS = 7;
 const CLIENTS_PER_SCREEN = 300;
 const MONTHLY_IMPRESSIONS = SCREENS * CLIENTS_PER_SCREEN;
 const AVG_WAIT_MINUTES = 30;
@@ -14,7 +14,7 @@ const stats = [
     suffix: "",
     prefix: "",
     color: "#60a5fa",
-    desc: "barberías en la red",
+    desc: "en negocios de Raleigh",
   },
   {
     icon: Clock,
@@ -27,12 +27,12 @@ const stats = [
   },
   {
     icon: Users,
-    label: "Clientes alcanzados",
+    label: "Exposición estimada",
     value: MONTHLY_IMPRESSIONS,
     suffix: "+",
     prefix: "",
     color: "#34d399",
-    desc: "personas al mes",
+    desc: "personas/mes (estimado)",
   },
   {
     icon: TrendingUp,
@@ -87,20 +87,20 @@ const ImpactSection = () => {
             }}
           >
             <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#3b82f6", display: "inline-block" }} />
-            Alcance real, no estimado
+            Publicidad local, medible con QR y cupones
           </div>
           <h2
             className="text-3xl font-bold md:text-4xl"
             style={{ color: "#0f172a" }}
           >
-            Tu anuncio frente a{" "}
+            Tu anuncio frente a una{" "}
             <span style={{ color: "#60a5fa" }}>
-              {MONTHLY_IMPRESSIONS.toLocaleString()}+ personas
-            </span>{" "}
-            al mes
+              audiencia local cautiva
+            </span>
           </h2>
           <p className="mt-3 text-lg" style={{ color: "#64748b" }}>
-            Audiencia cautiva. Clientes que esperan, miran y recuerdan.
+            Clientes que esperan, miran y recuerdan. El alcance de personas es
+            estimado; lo que sí medimos con exactitud son reproducciones, escaneos QR y cupones.
           </p>
         </div>
 

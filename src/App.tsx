@@ -21,6 +21,7 @@ import AdRedirect from "./pages/AdRedirect";
 import ResetPassword from "./pages/ResetPassword";
 import SelfiePage from "./pages/SelfiePage";
 import CouponPage from "./pages/CouponPage";
+import RaleighLocalAds from "./pages/RaleighLocalAds";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Index />} />
+              <Route path="/raleigh-local-ads" element={<RaleighLocalAds />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/admin/login" element={<AdminLogin />} />

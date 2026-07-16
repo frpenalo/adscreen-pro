@@ -59,9 +59,10 @@ const SCENES = [
 // reales" / "Tus anuncios en negocios reales" / etc. The animation is
 // short (3s per word) so visitors who skim still see motion within seconds.
 const HEADLINE_WORDS = [
-  { text: "pantallas reales", color: "#a78bfa" },
-  { text: "negocios reales", color: "#22d3ee" },
-  { text: "clientes reales", color: "#f472b6" },
+  { text: "barberías", color: "#a78bfa" },
+  { text: "salones", color: "#f472b6" },
+  { text: "restaurantes", color: "#22d3ee" },
+  { text: "negocios locales", color: "#fbbf24" },
 ];
 
 // ── TV mockup — single ad screen ─────────────────────────────────────────────
@@ -254,7 +255,7 @@ const RotatingWord = () => {
 // avoid hammering the DB from a public page; bump manually or wire a
 // cached SECURITY DEFINER RPC if/when the count starts mattering for
 // honesty (e.g. >50 partners and the round number lies more than helps).
-const LIVE_PARTNERS = 8;
+const LIVE_PARTNERS = 7;
 
 const HeroSection = () => {
   const { t } = useLang();
@@ -336,15 +337,28 @@ const HeroSection = () => {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
             </span>
-            <span>{LIVE_PARTNERS} negocios activos en Raleigh ahora</span>
+            <span>{LIVE_PARTNERS} pantallas activas en Raleigh ahora</span>
           </motion.div>
 
           {/* Headline */}
-          <h1 className="text-4xl font-extrabold leading-[1.05] tracking-tight text-white md:text-5xl lg:text-6xl">
-            Tus anuncios en{" "}
+          <h1 className="text-4xl font-extrabold leading-[1.08] tracking-tight text-white md:text-5xl lg:text-[3.5rem]">
+            Anuncia tu negocio en pantallas de{" "}
             <span className="relative whitespace-nowrap">
               <RotatingWord />
+            </span>{" "}
+            de Raleigh{" "}
+            <span
+              className="whitespace-nowrap"
+              style={{
+                background: "linear-gradient(90deg, #34d399, #22d3ee)",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}
+            >
+              desde $60/mes
             </span>
+            .
           </h1>
 
           {/* Subheadline */}
@@ -354,7 +368,8 @@ const HeroSection = () => {
             transition={{ duration: 0.6, delay: 0.3 }}
             className="max-w-xl text-lg leading-relaxed text-slate-300 md:text-xl"
           >
-            Llegamos a clientes en barberías, salones y restaurantes mientras esperan su turno. Audiencia cautiva, sin scroll, sin saltar el anuncio.
+            Tu anuncio aparece frente a clientes reales mientras esperan su turno.
+            Sin contratos largos. Nosotros revisamos y publicamos tu contenido.
           </motion.p>
 
           {/* CTAs */}
@@ -366,6 +381,7 @@ const HeroSection = () => {
           >
             <Link
               to="/register?role=advertiser"
+              data-track="cta-primary-hero"
               className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl px-7 py-4 text-base font-semibold text-white transition-all hover:scale-[1.02] active:scale-[0.98]"
               style={{
                 background:
@@ -375,18 +391,18 @@ const HeroSection = () => {
               }}
             >
               <Sparkles className="h-4 w-4" />
-              <span>Comenzar gratis</span>
+              <span>Quiero anunciarme por $60/mes</span>
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
             <Button
               variant="outline"
               size="lg"
-              onClick={handleDemo}
-              disabled={demoLoading}
+              onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}
+              data-track="cta-secondary-hero"
               className="gap-2 rounded-xl border-white/15 bg-white/5 text-slate-200 backdrop-blur hover:bg-white/10 hover:text-white"
             >
               <Play className="h-4 w-4" />
-              {demoLoading ? t.hero.demoLoading : t.hero.demo}
+              Ver cómo funciona
             </Button>
           </motion.div>
 
@@ -397,8 +413,20 @@ const HeroSection = () => {
             transition={{ duration: 0.6, delay: 0.6 }}
             className="text-xs text-slate-400"
           >
-            Sin contrato · Cancela cuando quieras · Setup en menos de 5 min
+            Sin contratos largos · Cancela cuando quieras · Revisamos y publicamos por ti
           </motion.p>
+
+          {/* Demo link — kept as low-key tertiary so the two brief CTAs lead */}
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.6 }}
+            transition={{ duration: 0.6, delay: 0.7 }}
+            onClick={handleDemo}
+            disabled={demoLoading}
+            className="text-xs text-slate-400 underline underline-offset-4 hover:text-slate-200 disabled:opacity-50"
+          >
+            {demoLoading ? t.hero.demoLoading : "o explora el panel demo →"}
+          </motion.button>
         </motion.div>
 
         {/* ── Right column: TV mosaic ───────────────────────────────────── */}
