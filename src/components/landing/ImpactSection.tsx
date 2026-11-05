@@ -181,21 +181,13 @@ const ImpactSection = () => {
             justifyContent: "center",
           }}
         >
-          <span style={{ color: "#64748b", fontSize: "14px" }}>Comparado con:</span>
-          {[
-            { label: "Valla publicitaria", price: "$400+/mes", worse: true },
-            { label: "Volantes", price: "$80/mes", worse: false },
-            { label: "Redes sociales", price: "$150/mes", worse: true },
-          ].map((c, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ fontSize: "13px", color: "#475569" }}>{c.label}</span>
-              <span style={{ fontSize: "13px", fontWeight: 700, color: "#f87171" }}>{c.price}</span>
-              {i < 2 && <span style={{ color: "#334155", margin: "0 4px" }}>·</span>}
-            </div>
-          ))}
+          <span style={{ fontSize: "14px", color: "#475569", textAlign: "center", lineHeight: 1.6 }}>
+            Comparado con una valla, un volante o las redes: <strong style={{ color: "#0f172a" }}>cuesta menos que cualquiera</strong>,
+            no necesita diseñador ni imprenta, y es el único que puedes medir con escaneos QR y cupones.
+          </span>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "8px" }}>
             <div style={{ width: "1px", height: "20px", background: "#cbd5e1" }} />
-            <span style={{ fontSize: "14px", fontWeight: 700, color: "#60a5fa" }}>AdScreenPro: $60/mes ✓</span>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "#60a5fa" }}>AdScreenPro: $79/mes ✓</span>
           </div>
         </div>
       </div>

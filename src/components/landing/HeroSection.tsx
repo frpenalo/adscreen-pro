@@ -356,7 +356,7 @@ const HeroSection = () => {
                 WebkitTextFillColor: "transparent",
               }}
             >
-              desde $60/mes
+              desde $79/mes
             </span>
             .
           </h1>
@@ -391,7 +391,7 @@ const HeroSection = () => {
               }}
             >
               <Sparkles className="h-4 w-4" />
-              <span>Quiero anunciarme por $60/mes</span>
+              <span>Quiero anunciarme por $79/mes</span>
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
             <Button

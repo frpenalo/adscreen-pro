@@ -30,7 +30,7 @@ const FinalCtaSection = () => {
               WebkitTextFillColor: "transparent",
             }}
           >
-            {" "}desde $60/mes
+            {" "}desde $79/mes
           </span>
           .
         </h2>
@@ -49,7 +49,7 @@ const FinalCtaSection = () => {
             }}
           >
             <Sparkles className="h-4 w-4" />
-            Empezar por $60/mes
+            Empezar por $79/mes
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
           </Link>
           <Link

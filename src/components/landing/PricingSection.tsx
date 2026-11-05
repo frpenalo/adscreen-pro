@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Check } from "lucide-react";
 
 // ── Precio simple ─────────────────────────────────────────────────────────────
-// Un solo plan claro: $60/mes. Sin tablas confusas.
+// Un solo plan claro: $79/mes. Sin tablas confusas.
 
 const INCLUDES = [
   "Anuncio en imagen o video",
@@ -21,7 +21,7 @@ const PricingSection = () => {
             Precio simple
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-lg" style={{ color: "#64748b" }}>
-            Anuncia tu negocio local por $60/mes. Sin contratos largos. Ideal para
+            Anuncia tu negocio local por $79/mes. Sin contratos largos. Ideal para
             restaurantes, barbershops, salones, servicios locales, tiendas, eventos y marcas locales.
           </p>
         </div>
@@ -35,7 +35,7 @@ const PricingSection = () => {
               <div className="p-8">
                 <h3 className="text-lg font-semibold" style={{ color: "#0f172a" }}>Anúnciate en la red</h3>
                 <div className="mt-3 flex items-end gap-1">
-                  <span className="text-5xl font-extrabold" style={{ color: "#0f172a" }}>$60</span>
+                  <span className="text-5xl font-extrabold" style={{ color: "#0f172a" }}>$79</span>
                   <span className="mb-1" style={{ color: "#64748b" }}>/ mes</span>
                 </div>
                 <ul className="mt-8 space-y-3">
@@ -51,7 +51,7 @@ const PricingSection = () => {
                   data-track="cta-primary-pricing"
                   className="mt-8 block w-full rounded-lg bg-primary py-3.5 text-center font-semibold text-primary-foreground transition-opacity hover:opacity-90"
                 >
-                  Empezar por $60/mes
+                  Empezar por $79/mes
                 </Link>
                 <p className="mt-3 text-center text-xs" style={{ color: "#94a3b8" }}>
                   Sin contratos largos · Cancela cuando quieras

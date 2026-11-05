@@ -8,7 +8,7 @@ import { ChevronDown } from "lucide-react";
 const FAQS: { q: string; a: string }[] = [
   {
     q: "¿Cuánto cuesta anunciarme?",
-    a: "Desde $60 al mes. Sin contratos largos: puedes cancelar cuando quieras avisando con anticipación. El precio incluye tu anuncio en la red de pantallas, revisión de tu contenido y soporte.",
+    a: "Desde $79 al mes. Sin contratos largos: puedes cancelar cuando quieras avisando con anticipación. El precio incluye tu anuncio en la red de pantallas, revisión de tu contenido y soporte.",
   },
   {
     q: "¿Dónde aparece mi anuncio?",

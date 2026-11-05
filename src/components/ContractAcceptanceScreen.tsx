@@ -16,7 +16,7 @@ Fecha: ${CONTRACT_DATE}
 Proveedor: SOFTMEDIA, LLC DBA AdScreenPro, Raleigh, NC
 Anunciante: ${name} — ${business}
 Email: ${email}
-Plan contratado: $60.00 USD / mes — Red de locales afiliados, Raleigh, NC
+Plan contratado: $79.00 USD / mes — Red de locales afiliados, Raleigh, NC
 
 CLÁUSULA 1: OBJETO DEL SERVICIO
 SOFTMEDIA, LLC DBA AdScreenPro (en adelante "AdScreenPro") se compromete a mostrar el contenido publicitario del Anunciante en su red de pantallas digitales instaladas en locales comerciales afiliados en la ciudad de Raleigh, NC, durante la vigencia de este acuerdo y de acuerdo con el plan contratado.
@@ -29,7 +29,7 @@ d) Las pantallas operan durante el horario de atención de cada establecimiento 
 e) AdScreenPro se reserva el derecho de ajustar el número de pantallas activas en la red, notificando al Anunciante con un mínimo de 7 días de anticipación si esto afecta significativamente el alcance del servicio contratado.
 
 CLÁUSULA 3: PRECIO Y FORMA DE PAGO
-El Anunciante pagará a AdScreenPro la suma de $60.00 USD mensuales por el servicio descrito en este acuerdo. El pago deberá realizarse por adelantado, entre los días 1 y 5 de cada mes, a través de la plataforma de pago habilitada en adscreenpro.com. El incumplimiento de pago dentro de los cinco (5) días calendario de gracia autorizará a AdScreenPro a suspender el servicio sin previo aviso adicional, sin que ello genere derecho a reembolso por el período ya cobrado.
+El Anunciante pagará a AdScreenPro la suma de $79.00 USD mensuales por el servicio descrito en este acuerdo. El pago deberá realizarse por adelantado, entre los días 1 y 5 de cada mes, a través de la plataforma de pago habilitada en adscreenpro.com. El incumplimiento de pago dentro de los cinco (5) días calendario de gracia autorizará a AdScreenPro a suspender el servicio sin previo aviso adicional, sin que ello genere derecho a reembolso por el período ya cobrado.
 
 CLÁUSULA 4: CONTENIDO PUBLICITARIO
 a) El Anunciante es el único responsable del contenido que suba a la plataforma, garantizando que cuenta con todos los derechos, licencias y autorizaciones necesarias para su uso.

@@ -8,7 +8,7 @@ import { ArrowRight, Megaphone, Store, Check } from "lucide-react";
 
 const ADVERTISER_BENEFITS = [
   "Frente a clientes reales, no scroll ni anuncios saltables",
-  "Desde $60/mes, sin contratos largos",
+  "Desde $79/mes, sin contratos largos",
   "Nosotros revisamos y publicamos tu anuncio",
   "Cambia tu contenido cuando quieras",
 ];
@@ -46,7 +46,7 @@ const AudiencesSection = () => {
               Para anunciantes
             </span>
             <h3 className="mt-2 text-2xl font-bold" style={{ color: "#0f172a" }}>
-              Pon tu negocio frente a clientes locales por solo $60/mes
+              Pon tu negocio frente a clientes locales por solo $79/mes
             </h3>
             <ul className="mt-6 flex-1 space-y-3">
               {ADVERTISER_BENEFITS.map((b) => (

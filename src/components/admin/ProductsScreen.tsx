@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
@@ -9,6 +9,7 @@ import {
   Plus,
   CheckCircle2,
   ChevronLeft,
+  QrCode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import QrPositionPicker, { QrPickerContent, QrPosition, DEFAULT_QR_POSITION } from "./QrPositionPicker";
 
 interface Product {
   id: string;
@@ -32,6 +34,9 @@ interface Product {
   media_type: "image" | "video";
   published_count: number;
   created_at: string;
+  qr_x: number;
+  qr_y: number;
+  qr_size_pct: number;
 }
 
 interface ShopifyProduct {
@@ -50,14 +55,31 @@ export default function ProductsScreen() {
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Dialog steps: 1 = pick from Shopify, 2 = upload creative + confirm
-  const [step, setStep] = useState<1 | 2>(1);
+  // Dialog steps: 1 = pick from Shopify, 2 = upload creative, 3 = place QR
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [shopifyProducts, setShopifyProducts] = useState<ShopifyProduct[]>([]);
   const [shopifyLoading, setShopifyLoading] = useState(false);
   const [shopifyError, setShopifyError] = useState<string | null>(null);
   const [selectedShopify, setSelectedShopify] = useState<ShopifyProduct | null>(null);
   const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [qrPosition, setQrPosition] = useState<QrPosition>(DEFAULT_QR_POSITION);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Blob URL for the local media preview (passed to the QR picker). Revoked
+  // whenever mediaFile changes so we don't leak.
+  const mediaPreviewUrl = useMemo(
+    () => (mediaFile ? URL.createObjectURL(mediaFile) : null),
+    [mediaFile]
+  );
+  useEffect(() => {
+    return () => {
+      if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+    };
+  }, [mediaPreviewUrl]);
+
+  // QR editing for existing products
+  const [editingQrProduct, setEditingQrProduct] = useState<Product | null>(null);
+  const [savingQr, setSavingQr] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -110,6 +132,7 @@ export default function ProductsScreen() {
     setStep(1);
     setSelectedShopify(null);
     setMediaFile(null);
+    setQrPosition(DEFAULT_QR_POSITION);
     if (fileInputRef.current) fileInputRef.current.value = "";
     setDialogOpen(true);
     fetchShopifyProducts();
@@ -120,6 +143,7 @@ export default function ProductsScreen() {
     setStep(1);
     setSelectedShopify(null);
     setMediaFile(null);
+    setQrPosition(DEFAULT_QR_POSITION);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -152,6 +176,9 @@ export default function ProductsScreen() {
         shopify_handle: selectedShopify.handle,
         media_url: urlData.publicUrl,
         media_type: isImage ? "image" : "video",
+        qr_x: qrPosition.x,
+        qr_y: qrPosition.y,
+        qr_size_pct: qrPosition.sizePct,
       });
       if (insertErr) throw insertErr;
 
@@ -239,6 +266,47 @@ export default function ProductsScreen() {
       toast.error(e.message ?? "Error al despublicar", { id: `unpub-${product.id}` });
     } finally {
       setPublishingId(null);
+    }
+  };
+
+  // Save new QR position for an existing product. If the product is currently
+  // published to partners, we re-run publish so the new position propagates to
+  // each partner's ad row (their metadata carries qr_x/y/size_pct).
+  const handleSaveQrPosition = async (pos: QrPosition) => {
+    if (!editingQrProduct) return;
+    setSavingQr(true);
+    try {
+      const { error } = await supabase
+        .from("products" as any)
+        .update({
+          qr_x: pos.x,
+          qr_y: pos.y,
+          qr_size_pct: pos.sizePct,
+        })
+        .eq("id", editingQrProduct.id);
+      if (error) throw error;
+
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === editingQrProduct.id
+            ? { ...p, qr_x: pos.x, qr_y: pos.y, qr_size_pct: pos.sizePct }
+            : p
+        )
+      );
+
+      if (editingQrProduct.published_count > 0) {
+        toast.loading("Propagando a pantallas...", { id: `qr-${editingQrProduct.id}` });
+        await handlePublish({ ...editingQrProduct, qr_x: pos.x, qr_y: pos.y, qr_size_pct: pos.sizePct });
+        toast.success("Posición del QR actualizada en todas las pantallas", { id: `qr-${editingQrProduct.id}` });
+      } else {
+        toast.success("Posición del QR guardada");
+      }
+
+      setEditingQrProduct(null);
+    } catch (e: any) {
+      toast.error(e.message ?? "Error al guardar la posición");
+    } finally {
+      setSavingQr(false);
     }
   };
 
@@ -338,6 +406,16 @@ export default function ProductsScreen() {
               </div>
 
               <div className="flex-shrink-0 flex items-center gap-3">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setEditingQrProduct(product)}
+                  className="text-muted-foreground hover:text-primary gap-1"
+                  title="Editar posición del QR"
+                >
+                  <QrCode className="h-4 w-4" />
+                  QR
+                </Button>
                 {product.published_count > 0 ? (
                   <>
                     <Badge
@@ -473,7 +551,7 @@ export default function ProductsScreen() {
                 </Button>
               </DialogFooter>
             </>
-          ) : (
+          ) : step === 2 ? (
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
@@ -487,7 +565,7 @@ export default function ProductsScreen() {
                   Subir creatividad
                 </DialogTitle>
                 <DialogDescription>
-                  Sube la imagen o video publicitario. Deja el espacio inferior derecho libre — el sistema superpone el QR de afiliado de cada partner ahí.
+                  Sube la imagen o video publicitario. En el siguiente paso eliges dónde va el QR.
                 </DialogDescription>
               </DialogHeader>
 
@@ -534,7 +612,7 @@ export default function ProductsScreen() {
                   />
                 </label>
                 <p className="text-xs text-muted-foreground">
-                  Recomendado: 1920×1080 (16:9). Deja ~120×120px libres abajo a la derecha para el QR.
+                  Recomendado: 1920×1080 (16:9). Podrás colocar el QR en cualquier parte del arte en el siguiente paso.
                 </p>
               </div>
 
@@ -542,15 +620,70 @@ export default function ProductsScreen() {
                 <Button variant="outline" onClick={() => setStep(1)} disabled={saving}>
                   Atrás
                 </Button>
+                <Button onClick={() => setStep(3)} disabled={!mediaFile} className="gap-2">
+                  Siguiente
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            // Step 3 — inline picker + final Create button.
+            // We open the picker in controlled mode so Cancel goes back to step 2
+            // and Save advances to the insert.
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <button
+                    onClick={() => setStep(2)}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Volver"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  Colocar QR en el arte
+                </DialogTitle>
+                <DialogDescription>
+                  Haz clic sobre el arte donde quieres el QR. Ajusta tamaño con el slider.
+                </DialogDescription>
+              </DialogHeader>
+
+              {mediaPreviewUrl && mediaFile && (
+                <QrPickerContent
+                  mediaUrl={mediaPreviewUrl}
+                  mediaType={mediaFile.type.startsWith("video/") ? "video" : "image"}
+                  position={qrPosition}
+                  onChange={setQrPosition}
+                />
+              )}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setStep(2)} disabled={saving}>
+                  Atrás
+                </Button>
                 <Button onClick={handleCreate} disabled={saving || !mediaFile} className="gap-2">
                   {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Crear
+                  Crear producto
                 </Button>
               </DialogFooter>
             </>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Edit-QR dialog for existing products */}
+      {editingQrProduct && (
+        <QrPositionPicker
+          open={!!editingQrProduct}
+          mediaUrl={editingQrProduct.media_url}
+          mediaType={editingQrProduct.media_type}
+          initial={{
+            x: editingQrProduct.qr_x,
+            y: editingQrProduct.qr_y,
+            sizePct: editingQrProduct.qr_size_pct,
+          }}
+          onCancel={() => { if (!savingQr) setEditingQrProduct(null); }}
+          onSave={handleSaveQrPosition}
+        />
+      )}
     </div>
   );
 }

@@ -15,7 +15,7 @@ const BUSINESS_TYPES = [
 
 const BENEFITS = [
   "Frente a clientes reales mientras esperan su turno",
-  "Desde $60/mes, sin contratos largos",
+  "Desde $79/mes, sin contratos largos",
   "Nosotros revisamos y publicamos tu anuncio",
   "Resultados medibles con QR y cupones",
 ];
@@ -72,7 +72,7 @@ const RaleighLocalAds = () => {
           <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-white md:text-4xl lg:text-5xl">
             Anuncia tu negocio en pantallas locales de Raleigh por{" "}
             <span style={{ background: "linear-gradient(90deg,#34d399,#22d3ee)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-              $60/mes
+              $79/mes
             </span>
             .
           </h1>
