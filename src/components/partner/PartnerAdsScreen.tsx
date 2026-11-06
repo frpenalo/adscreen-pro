@@ -273,24 +273,38 @@ const PartnerAdsScreen = () => {
 
       // Dispatch Remotion render. Returns immediately — the workflow runs on
       // GitHub Actions and updates the ad's final_media_path when finished.
+      // Igual que en CreateAdScreen: si el disparo falla, el render nunca va a
+      // arrancar, así que borramos el ad huérfano y le decimos la verdad al
+      // partner en vez de un falso "enviado".
       const videoFnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ad-video`;
-      await fetch(videoFnUrl, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ad_id: adId,
-          photo_url: enhancedUrl,
-          business_name: businessName.trim() || profile.business_name || "",
-          tagline: tagline.trim(),
-          cta: cta.trim(),
-          advertiser_id: user.id,
-          category: (profile as any)?.category ?? "",
-        }),
-      });
+      let videoRes: Response;
+      try {
+        videoRes = await fetch(videoFnUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ad_id: adId,
+            photo_url: enhancedUrl,
+            business_name: businessName.trim() || profile.business_name || "",
+            tagline: tagline.trim(),
+            cta: cta.trim(),
+            advertiser_id: user.id,
+            category: (profile as any)?.category ?? "",
+          }),
+        });
+      } catch {
+        await supabase.from("ads").delete().eq("id", adId);
+        throw new Error("No pudimos iniciar la creación del video. Revisa tu conexión e intenta de nuevo.");
+      }
+      if (!videoRes.ok) {
+        await supabase.from("ads").delete().eq("id", adId);
+        const err = await videoRes.json().catch(() => ({} as any));
+        throw new Error(err.error || "No pudimos iniciar la creación del video. Intenta de nuevo en unos minutos.");
+      }
 
       await supabase.from("admin_notifications").insert({
         type: "new_ad",
