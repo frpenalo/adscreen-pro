@@ -1,5 +1,5 @@
 // Plan que el anunciante eligió antes de registrarse. Hoy solo existe un plan
-// alterno: el paquete Raleigh 360 (pantallas + Kultura Radio), que llega desde
+// alterno: el paquete Kultura 360 (pantallas + Kultura Radio), que llega desde
 // kulturaradio.com con ?plan=raleigh360&ref=<ref de Kultura>. Sin plan, el
 // anunciante paga el plan normal de pantallas.
 

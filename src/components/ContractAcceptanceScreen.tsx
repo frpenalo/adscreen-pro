@@ -17,7 +17,7 @@ Fecha: ${CONTRACT_DATE}
 Proveedor: SOFTMEDIA, LLC DBA AdScreenPro, Raleigh, NC
 Anunciante: ${name} — ${business}
 Email: ${email}
-Plan contratado: $${planPriceUsd(plan)}.00 USD / mes — ${plan === "raleigh360" ? "Paquete Raleigh 360: red de locales afiliados en Raleigh, NC, y anuncio en Kultura Radio" : "Red de locales afiliados, Raleigh, NC"}
+Plan contratado: $${planPriceUsd(plan)}.00 USD / mes — ${plan === "raleigh360" ? "Paquete Kultura 360: red de locales afiliados en Raleigh, NC, y anuncio en Kultura Radio" : "Red de locales afiliados, Raleigh, NC"}
 
 CLÁUSULA 1: OBJETO DEL SERVICIO
 SOFTMEDIA, LLC DBA AdScreenPro (en adelante "AdScreenPro") se compromete a mostrar el contenido publicitario del Anunciante en su red de pantallas digitales instaladas en locales comerciales afiliados en la ciudad de Raleigh, NC, durante la vigencia de este acuerdo y de acuerdo con el plan contratado.

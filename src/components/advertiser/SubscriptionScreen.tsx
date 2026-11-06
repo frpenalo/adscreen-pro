@@ -184,7 +184,7 @@ const SubscriptionScreen = () => {
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {plan === "raleigh360"
-                    ? (lang === "en" ? "Raleigh 360 bundle · screens + Kultura Radio" : "Paquete Raleigh 360 · pantallas + Kultura Radio")
+                    ? (lang === "en" ? "Kultura 360 bundle · screens + Kultura Radio" : "Paquete Kultura 360 · pantallas + Kultura Radio")
                     : t.advertiserDashboard.plan}
                 </p>
               </div>

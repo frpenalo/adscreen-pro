@@ -6,7 +6,7 @@ import { parsePlan, sanitizeKulturaRef, planPriceUsd } from "./checkout-plan";
 // con caracteres inválidos hace que Stripe rechace la sesión de pago.
 
 describe("parsePlan — qué plan llega en la URL", () => {
-  it("reconoce el paquete Raleigh 360", () => {
+  it("reconoce el paquete Kultura 360", () => {
     expect(parsePlan("raleigh360")).toBe("raleigh360");
   });
 

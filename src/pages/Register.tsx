@@ -109,7 +109,7 @@ const Register = () => {
           <h1 className="mt-4 text-2xl font-bold text-foreground">{title}</h1>
           {plan === "raleigh360" && (
             <p className="mt-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2 text-sm text-foreground">
-              Paquete <strong>Raleigh 360</strong> · pantallas + Kultura Radio · ${RALEIGH360_PRICE_USD}/mes
+              Paquete <strong>Kultura 360</strong> · pantallas + Kultura Radio · ${RALEIGH360_PRICE_USD}/mes
             </p>
           )}
         </div>
