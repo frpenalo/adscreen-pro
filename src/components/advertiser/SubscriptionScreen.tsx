@@ -8,12 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { CreditCard, CheckCircle, Loader2 } from "lucide-react";
+import { parsePlan, sanitizeKulturaRef, RALEIGH360_PRICE_USD } from "@/lib/checkout-plan";
 
 const USE_MOCK = false;
 
 const SubscriptionScreen = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { user } = useAuth();
+  const plan = parsePlan(user?.user_metadata?.plan);
+  const kulturaRef = sanitizeKulturaRef(user?.user_metadata?.kultura_ref);
+  const per = lang === "en" ? "month" : "mes";
   const [showCancel, setShowCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
@@ -76,7 +80,9 @@ const SubscriptionScreen = () => {
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke("create-checkout");
+      const { data, error } = await supabase.functions.invoke("create-checkout", {
+        body: plan ? { plan, ...(kulturaRef ? { ref: kulturaRef } : {}) } : {},
+      });
       if (error) throw error;
       if (data?.url) {
         window.open(data.url, "_blank");
@@ -173,13 +179,21 @@ const SubscriptionScreen = () => {
           ) : (
             <>
               <div className="text-center py-6 space-y-2">
-                <p className="text-3xl font-bold text-foreground">{t.advertiserDashboard.planPrice}</p>
-                <p className="text-sm text-muted-foreground">{t.advertiserDashboard.plan}</p>
+                <p className="text-3xl font-bold text-foreground">
+                  {plan === "raleigh360" ? `$${RALEIGH360_PRICE_USD}/${per}` : t.advertiserDashboard.planPrice}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {plan === "raleigh360"
+                    ? (lang === "en" ? "Raleigh 360 bundle · screens + Kultura Radio" : "Paquete Raleigh 360 · pantallas + Kultura Radio")
+                    : t.advertiserDashboard.plan}
+                </p>
               </div>
 
               <Button className="w-full" onClick={handleCheckout} disabled={checkingOut}>
                 {checkingOut && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                {t.advertiserDashboard.subscribeCta}
+                {plan === "raleigh360"
+                  ? `${lang === "en" ? "Subscribe" : "Suscribirse"} · $${RALEIGH360_PRICE_USD}/${per}`
+                  : t.advertiserDashboard.subscribeCta}
               </Button>
 
               <p className="text-xs text-muted-foreground text-center">{t.advertiserDashboard.afterPaymentNote}</p>

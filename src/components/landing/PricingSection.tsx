@@ -5,9 +5,9 @@ import { Check } from "lucide-react";
 // Un solo plan claro: $79/mes. Sin tablas confusas.
 
 const INCLUDES = [
-  "Anuncio en imagen o video",
-  "Revisión de tu contenido incluida",
-  "Publicación en la red de pantallas",
+  "Anuncio visual en imagen o video, 10 segundos por ciclo",
+  "Red de 7 pantallas en barberías y salones de Raleigh",
+  "Producción de tu anuncio incluida, con una revisión",
   "Soporte del equipo",
   "Puedes actualizar tu contenido cuando quieras",
 ];

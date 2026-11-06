@@ -12,6 +12,7 @@ import ContractAcceptanceScreen from "@/components/ContractAcceptanceScreen";
 import { useContractAcceptance } from "@/hooks/useContractAcceptance";
 import { useAdvertiserProfile } from "@/hooks/useAdvertiserData";
 import { useAuth } from "@/contexts/AuthContext";
+import { parsePlan } from "@/lib/checkout-plan";
 
 const AdvertiserDashboard = () => {
   const [page, setPage] = useState("home");
@@ -26,6 +27,7 @@ const AdvertiserDashboard = () => {
         name={profile.customer_name ?? ""}
         business={profile.business_name ?? ""}
         email={user?.email ?? ""}
+        plan={parsePlan(user?.user_metadata?.plan)}
         onAccepted={() => {}}
       />
     );

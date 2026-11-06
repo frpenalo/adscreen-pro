@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { Eye, EyeOff } from "lucide-react";
+import { parsePlan, sanitizeKulturaRef, RALEIGH360_PRICE_USD } from "@/lib/checkout-plan";
 
 const categories = [
   "Automotriz", "Balloon Artist", "Belleza", "Educación",
@@ -19,7 +20,11 @@ const Register = () => {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const role = (params.get("role") as "advertiser" | "partner") || "advertiser";
-  const refCode = params.get("ref") || "";
+  const plan = role === "advertiser" ? parsePlan(params.get("plan")) : null;
+  // Con plan=raleigh360 el ref es el de Kultura (identifica la compra allá),
+  // no un código de referido de partner.
+  const kulturaRef = plan ? sanitizeKulturaRef(params.get("ref")) : null;
+  const refCode = plan ? "" : params.get("ref") || "";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -51,6 +56,8 @@ const Register = () => {
           : category;
         metadata.phone = phone;
         if (refCode) metadata.ref_code = refCode;
+        if (plan) metadata.plan = plan;
+        if (kulturaRef) metadata.kultura_ref = kulturaRef;
       }
       if (role === "partner") {
         metadata.business_name = partnerBusiness;
@@ -100,6 +107,11 @@ const Register = () => {
         <div className="text-center">
           <Link to="/" className="inline-block text-2xl font-bold text-foreground">AdScreenPro</Link>
           <h1 className="mt-4 text-2xl font-bold text-foreground">{title}</h1>
+          {plan === "raleigh360" && (
+            <p className="mt-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2 text-sm text-foreground">
+              Paquete <strong>Raleigh 360</strong> · pantallas + Kultura Radio · ${RALEIGH360_PRICE_USD}/mes
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="rounded-2xl border border-border bg-card p-8 space-y-4 shadow-sm">
