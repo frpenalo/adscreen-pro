@@ -15,8 +15,9 @@ const SCREENS_INCLUDES = [
 
 const BUNDLE_INCLUDES = [
   "Todo el plan de pantallas",
-  "Cuña de 15 segundos en Kultura Radio, con guion y voz producidos por nosotros",
+  "Cuña de 30 segundos en Kultura Radio, con guion y voz producidos por nosotros",
   "Suena 3 veces al día entre canciones: mañana, tarde y noche",
+  "2 menciones del DJ al día: te nombra con sus palabras, entre canciones",
   "Reporte con cada vez que tu cuña salió al aire",
   "Un solo pago mensual",
 ];
