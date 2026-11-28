@@ -27,6 +27,7 @@ import SportsWidget from "@/components/player/SportsWidget";
 import NewsWidget from "@/components/player/NewsWidget";
 import CinematicReveal from "@/components/selfie/CinematicReveal";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { qrValueForAd } from "@/lib/qr-target";
 
 interface Ad {
   id: string;
@@ -912,7 +913,7 @@ export default function PlayerPage() {
         id: row.id,
         type: row.type,
         final_media_path: withBuster(row.final_media_path, row.id),
-        qr_url: row.qr_url ?? null,
+        qr_url: qrValueForAd(row, screenId, window.location.origin),
         metadata: row.metadata ?? null,
         kind: "ad",
       }));

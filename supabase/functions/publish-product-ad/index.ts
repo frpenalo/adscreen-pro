@@ -10,10 +10,9 @@
  * 3. Inserta 1 ad por partner aprobado con su QR de afiliado GoAffPro
  * 4. Actualiza products.published_count
  *
- * El QR encoda directamente https://regalove.co/products/{handle}?ref={partner_ref_code}
- * de modo que el preview de la cámara muestra el destino real y el escaneo
- * va directo a la página del producto. GoAffPro acredita la compra al
- * partner dueño de la pantalla vía el parámetro `ref`.
+ * qr_url guarda https://regalove.co/products/{handle}?ref={partner_ref_code}; el player
+ * dibuja el QR hacia /r/:adId/:screenId (cuenta el escaneo) y AdRedirect lleva a ese enlace.
+ * GoAffPro acredita la compra al partner dueño de la pantalla vía el parámetro `ref`.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -181,10 +180,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ success: true, published_to: 0 });
   }
 
-  // 4. Build one ad per partner. The QR encodes the direct GoAffPro-tagged
-  //    Regalove product URL so the phone's camera preview shows the real
-  //    destination and the scan goes straight to the product page. GoAffPro
-  //    credits the partner owning the screen via the `ref` query param.
+  // 4. Build one ad per partner. qr_url stores the GoAffPro-tagged Regalove
+  //    product URL; the player draws the QR to /r/:adId/:screenId so the scan
+  //    is counted, and AdRedirect forwards to this URL. GoAffPro credits the
+  //    partner owning the screen via the `ref` query param.
   const adRows = (partners as Partner[]).flatMap((partner) => {
     const refCode = extractRefCode(partner.goaffpro_referral_link);
     if (!refCode) return [];
